@@ -10,10 +10,14 @@ own risk!
 Copyright: Copyright (c) 2026 The MITRE Corporation
 """
 
+import os
+import secrets
 import argparse
 import json
 from pathlib import Path
-
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization 
 from loguru import logger
 
 
@@ -27,27 +31,37 @@ def gen_secrets(groups: list[int]) -> bytes:
     All generated secrets must be contained in the returned bytes
     object.
 
+    ===== NOT USED ======
     :param groups: List of permission groups that will be valid in this
-        deployment.
+        deployment. 
 
     :returns: Contents of the secrets file
     """
-    # TODO: Update this function to generate any system-wide secrets needed by
-    #   your design
+    
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    public_key = private_key.public_key()
 
-    # Create the secrets object
-    # You can change this to generate any secret material
-    # The secrets file will never be shared with attackers
-    secrets = {
-        "groups": groups,
-        "some_secrets": "EXAMPLE",
-    }
+    # save the ECC private key to host
+    # in docker, make sure to save to persisitent volume
+    with open("host_private_key.pem", "wb") as f:
+        f.write(private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption() # Or use a password
+        ))
 
-    # NOTE: if you choose to use JSON for your file type, you will not
-    # be able to store binary data, and must either use a different file
-    # type or encode the binary data to hex, base64, or another type of
-    # ASCII-only encoding
-    return json.dumps(secrets).encode()
+    serialized_public = public_key.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint
+    )
+
+    aes_key = secrets.token_bytes(32)
+
+    # binary concatentaion, split point for ECC256 is at 65
+    # 0-64: serialized_public 65-97: aes_key
+    return serialized_public + aes_key
+
+
 
 
 def parse_args():
@@ -86,9 +100,6 @@ def main():
 
     # Print the generated secrets for your own debugging
     # Attackers will NOT have access to the output of this, but feel free to remove
-    #
-    # NOTE: Printing sensitive data is generally not good security practice
-    logger.debug(f"Generated secrets: {secrets}")
 
     # Open the file, erroring if the file exists unless the --force arg is provided
     with open(args.secrets_file, "wb" if args.force else "xb") as f:
@@ -101,3 +112,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
