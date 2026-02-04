@@ -4,6 +4,16 @@ This repository holds the insecure example design for an eCTF Hardware Security 
 The rules for the 2026 eCTF can be found here: https://rules.ectf.mitre.org/. Your team
 should **NOT fork this repo**. Instead clone it and push to a new __private__ repo.
 
+`uv pip install -e ./ectf26_design/`
+
+Generating globa.secrets
+`uv run secrets ./global.secrets 1 0x1111`
+
+Generating secrets.h
+`python3 ./firmware/secrets_to_c_header.py ./global.secrets <PIN> <GroupID>=<Permission>`
+
+
+
 ## Layout
 
 - `firmware/` - Source code to build the firmware
