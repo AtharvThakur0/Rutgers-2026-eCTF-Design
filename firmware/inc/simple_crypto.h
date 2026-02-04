@@ -22,7 +22,7 @@
 
 /******************************** MACRO DEFINITIONS ********************************/
 #define BLOCK_SIZE AES_BLOCK_SIZE
-#define KEY_SIZE 16
+#define KEY_SIZE 32
 #define HASH_SIZE MD5_DIGEST_SIZE
 
 /******************************** FUNCTION PROTOTYPES ********************************/
@@ -32,7 +32,7 @@
  *          plaintext to encrypt
  * @param len The length of the plaintext to encrypt. Must be a multiple of
  *          BLOCK_SIZE (16 bytes)
- * @param key A pointer to a buffer of length KEY_SIZE (16 bytes) containing
+ * @param key A pointer to a buffer of length KEY_SIZE (32 bytes) containing
  *          the key to use for encryption
  * @param ciphertext A pointer to a buffer of length len where the resulting
  *          ciphertext will be written to
@@ -47,7 +47,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertex
  *           ciphertext to decrypt
  * @param len The length of the ciphertext to decrypt. Must be a multiple of
  *           BLOCK_SIZE (16 bytes)
- * @param key A pointer to a buffer of length KEY_SIZE (16 bytes) containing
+ * @param key A pointer to a buffer of length KEY_SIZE (32 bytes) containing
  *           the key to use for decryption
  * @param plaintext A pointer to a buffer of length len where the resulting
  *           plaintext will be written to
