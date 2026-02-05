@@ -32,7 +32,7 @@
 
 *****************************************************************************/
 -uinterruptVectors
---stack_size=256
+--stack_size=4096
 
 #define FLASH_BASE 0x6000
 

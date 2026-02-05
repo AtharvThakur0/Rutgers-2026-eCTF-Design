@@ -1,3 +1,6 @@
+#!/bin/bash
+set -e
+
 BUILDDIR=${1:-/tmp/build}
 python3 secrets_to_c_header.py /secrets/global.secrets ${HSM_PIN} ${PERMISSIONS}
 make BUILDDIR=${BUILDDIR}
