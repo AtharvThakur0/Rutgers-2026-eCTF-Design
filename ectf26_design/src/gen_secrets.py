@@ -13,6 +13,7 @@ Copyright: Copyright (c) 2026 The MITRE Corporation
 import os
 import secrets
 import argparse
+import struct
 import json
 from pathlib import Path
 from cryptography.hazmat.primitives import hashes
@@ -41,6 +42,7 @@ def gen_secrets(groups: list[int]) -> bytes:
     private_key = ec.generate_private_key(ec.SECP256R1())
     public_key = private_key.public_key()
 
+
     # save the ECC private key to host
     # in docker, make sure to save to persisitent volume
     with open("host_private_key.pem", "wb") as f:
@@ -59,7 +61,23 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     # binary concatentaion, split point for ECC256 is at 65
     # 0-64: serialized_public 65-97: aes_key
-    return serialized_public + aes_key
+    # group id is 32 bits 
+
+    # groups to bytes
+    group_list= [] 
+
+    for group in groups:
+        group_list.append(struct.pack('>h', group))
+
+    group_bytes = b"".join(group_list)
+
+    output = serialized_public + aes_key + group_bytes 
+
+    return output
+
+
+
+
 
 
 

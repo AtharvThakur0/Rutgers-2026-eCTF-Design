@@ -9,7 +9,7 @@
 
 typedef struct __attribute__((packed)) {
 // __attribute__((packed)) tells the compiler to remove padding
-  uint8_t uuid[16];
+  uint8_t  uuid[16];
   uint16_t length;
   uint16_t padding;
   uint32_t addr;
@@ -21,7 +21,7 @@ typedef struct __attribute__((packed)) {
   uint8_t   perm;
   uint32_t  counter;
   uint8_t   metadata_HMAC[32];
-  // HMAC(UUID + GroupKey + GroupID + Permissions + Counter)
+  // HMAC(GroupKey, UUID + GroupID + Permissions + Counter)
 } fat_ext_t; 
 
 
