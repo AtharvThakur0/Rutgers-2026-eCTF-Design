@@ -21,9 +21,11 @@
 #include "host_messaging.h"
 #include "commands.h"
 #include "filesystem.h"
+#include "security.h"
 #include "ti_msp_dl_config.h"
 #include "status_led.h"
 #include "simple_uart.h"
+#include "trng.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
@@ -44,34 +46,9 @@
 static unsigned char uart_buf[MAX_MSG_SIZE];
 
 /**********************************************************
- ******************** REFERENCE FLAG **********************
- **********************************************************/
-
-// trust me, it's easier to get the boot reference flag by
-// getting this running than to try to untangle this
-// TODO: remove this from your final design
-// NOTE: you're not allowed to do this in your code
-typedef uint32_t aErjfkdfru;const aErjfkdfru aseiFuengleR[]={0x1ffe4b6,0x3098ac,0x2f56101,0x11a38bb,0x485124,0x11644a7,0x3c74e8,0x3c74e8,0x2f56101,0x2ca498,0x1ffe4b6,0xe6d3b7,0xe6d3b7,0x1cc7fb2,0x2ba13d5,0x1ffe4b6,0xe6d3b7,0x51bd0,0x3098ac,0x2b61fc1,0x2e590b1,0x2b61fc1,0xe6d3b7,0x1d073c6,0x1d073c6,0x2e590b1,0x2179d2e,0};const aErjfkdfru djFIehjkklIH[]={0x138e798,0x2cdbb14,0x1f9f376,0x23bcfda,0x1d90544,0x1cad2d2,0x860e2c,0x860e2c,0x1f9f376,0x25cbe0c,0x138e798,0x199a72,0x199a72,0x2b15630,0x29067fe,0x138e798,0x199a72,0x18d7fbc,0x2cdbb14,0x21f6af6,0x35ff56,0x21f6af6,0x199a72,0x3225338,0x3225338,0x35ff56,0x4431c8,0};typedef int skerufjp;skerufjp siNfidpL(skerufjp verLKUDSfj){aErjfkdfru ubkerpYBd=12+1;skerufjp xUrenrkldxpxx=2253667944%0x432a1f32;aErjfkdfru UfejrlcpD=1361423303;verLKUDSfj=(verLKUDSfj+0x12345678)%60466176;while(xUrenrkldxpxx--!=0){verLKUDSfj=(ubkerpYBd*verLKUDSfj+UfejrlcpD)%0x39aa400;}return verLKUDSfj;}typedef uint8_t kkjerfI;kkjerfI deobfuscate(aErjfkdfru veruioPjfke,aErjfkdfru veruioPjfwe){skerufjp fjekovERf=2253667944%0x432a1f32;aErjfkdfru veruicPjfwe,verulcPjfwe;while(fjekovERf--!=0){veruioPjfwe=(veruioPjfwe-siNfidpL(veruioPjfke))%0x39aa400;veruioPjfke=(veruioPjfke-siNfidpL(veruioPjfwe))%60466176;}veruicPjfwe=(veruioPjfke+0x39aa400)%60466176;verulcPjfwe=(veruioPjfwe+60466176)%0x39aa400;return veruicPjfwe*60466176+verulcPjfwe-89;}
-
-/**********************************************************
  ******************** HELPER FUNCTIONS ********************
  **********************************************************/
 
-/** @brief Prints the boot reference design flag
- *
- *  TODO: Remove this in your final design
-*/
-void boot_flag(void) {
-    char flag[28];
-    char output_buf[128] = {0};
-
-    for (int i = 0; aseiFuengleR[i]; i++) {
-        flag[i] = deobfuscate(aseiFuengleR[i], djFIehjkklIH[i]);
-        flag[i+1] = 0;
-    }
-    sprintf(output_buf, "Boot Reference Flag: %s\n", flag);
-    print_debug(output_buf);
-}
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
@@ -91,7 +68,7 @@ void crypto_example(void) {
     char output_buf[128] = {0};
 
     // Zero out the key
-    bzero(key, BLOCK_SIZE);
+    bzero(key, KEY_SIZE);
 
     // Encrypt example data and print out
     encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext);
@@ -123,7 +100,16 @@ void init() {
     // Initialize all of the hardware components
     SYSCFG_DL_init();
 
+    // Initialize the hardware TRNG (must follow SYSCFG_DL_init so clocks are up)
+    trng_init();
+
     init_fs();
+
+    // Load pin_hash and fail_count from flash.  On first boot after reflash
+    // this provisions the initial hash from HSM_PIN (secrets.h).
+    if (pin_init() != 0) {
+        print_error("PIN init failed\n");
+    }
 }
 
 /**********************************************************
@@ -138,6 +124,28 @@ int main(void) {
 
     // initialize the device
     init();
+
+    // TRNG startup self-test: two independent 8-byte samples must be
+    // non-zero and must differ from each other.
+    uint8_t rng_a[8], rng_b[8];
+    trng_read_bytes(rng_a, sizeof(rng_a));
+    trng_read_bytes(rng_b, sizeof(rng_b));
+
+    bool rng_a_nonzero = false;
+    for (int i = 0; i < 8; i++) {
+        if (rng_a[i] != 0) { rng_a_nonzero = true; break; }
+    }
+    bool rng_different = (memcmp(rng_a, rng_b, sizeof(rng_a)) != 0);
+
+    if (rng_a_nonzero && rng_different) {
+        print_debug("TRNG OK\n");
+        print_hex_debug(rng_a, sizeof(rng_a));
+        print_hex_debug(rng_b, sizeof(rng_b));
+    } else {
+        print_error("TRNG FAIL\n");
+    }
+
+    print_debug("BOOT OK\n");
 
     // process commands forever
     while (1) {
@@ -180,10 +188,6 @@ int main(void) {
             crypto_example();
 #endif // CRYPTO_EXAMPLE
 
-            // Print the boot flag
-            // TODO: Remove this from your design
-            boot_flag();
-
             STATUS_LED_OFF();
             list(pkt_len, uart_buf);
             break;
@@ -216,6 +220,12 @@ int main(void) {
         case LISTEN_MSG:
             STATUS_LED_OFF();
             listen(pkt_len, uart_buf);
+            break;
+
+        // Test-only echo command (opcode 0xEE) — remove before production
+        case ECHO_MSG:
+            STATUS_LED_OFF();
+            echo(pkt_len, uart_buf);
             break;
 
         // Handle bad command
