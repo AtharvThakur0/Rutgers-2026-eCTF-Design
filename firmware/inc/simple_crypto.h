@@ -19,6 +19,8 @@
 
 #include "wolfssl/wolfcrypt/aes.h"
 #include "wolfssl/wolfcrypt/hash.h"
+#include "wolfssl/wolfcrypt/ecc.h"
+#include "wolfssl/wolfcrypt/hmac.h"
 
 /******************************** MACRO DEFINITIONS ********************************/
 #define BLOCK_SIZE AES_BLOCK_SIZE
@@ -67,6 +69,54 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintex
  * @return 0 on success, non-zero for other error
  */
 int hash(void *data, size_t len, uint8_t *hash_out);
+
+int wc_ecc_sign_hash(
+    const byte * in,
+    word32 inlen,
+    byte * out,
+    word32 * outlen,
+    WC_RNG * rng,
+    ecc_key * key
+)
+
+int wc_HmacSetKey(
+    Hmac * hmac,
+    int type,
+    const byte * key,
+    word32 keySz
+)
+
+int wc_HKDF(
+    int type,
+    const byte * inKey,
+    word32 inKeySz,
+    const byte * salt,
+    word32 saltSz,
+    const byte * info,
+    word32 infoSz,
+    byte * out,
+    word32 outSz
+)
+
+int wc_HKDF_Extract(
+    int type,
+    const byte * salt,
+    word32 saltSz,
+    const byte * inKey,
+    word32 inKeySz,
+    byte * out
+)
+
+int wc_HKDF_Expand(
+    int type,
+    const byte * inKey,
+    word32 inKeySz,
+    const byte * info,
+    word32 infoSz,
+    byte * out,
+    word32 outSz
+)
+
 
 #endif // CRYPTO_EXAMPLE
 #endif // ECTF_CRYPTO_H
