@@ -1,9 +1,6 @@
-#include "ti/devices/msp/peripherals/hw_trng.h"
+#include "trng.h"
 
-#define TRNG_BASE_ADDR 0x40444000
-#define TRNG_HW ((volatile TRNG_Regs *)TRNG_BASE_ADDR)
-
-uint32_t trngx(int *error) {
+uint32_t trng_32(int *error) {
   if (error)
     *error = 0;
   TRNG_HW->GPRCM.PWREN = (0x26 << 24) | 0x1;
