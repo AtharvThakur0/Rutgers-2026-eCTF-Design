@@ -10,8 +10,16 @@
  *
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
+
+#include <sodium.h>
 #include "security.h"
 #include "host_messaging.h"
+
+
+int nonce(){
+    if()
+}
+
 
 bool check_pin(unsigned char *pin) {
     print_debug("Checking PIN\n");

@@ -18,7 +18,7 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
   uint32_t  file_addr;
   uint16_t  group_id;
-  uint8_t   perm;
+  group_permission_t perm;
   uint32_t  counter;
   uint8_t   metadata_HMAC[32];
   // HMAC(GroupKey, UUID + GroupID + Permissions + Counter)

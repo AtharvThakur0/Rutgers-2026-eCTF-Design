@@ -7,7 +7,8 @@ should **NOT fork this repo**. Instead clone it and push to a new __private__ re
 `uv pip install -e ./ectf26_design/`
 
 Generating globa.secrets
-`uv run secrets ./global.secrets 1 0x1111`
+`uv run secrets ./global.secrets 1 0x1111` 
+where 1 and 0x1111 are examples of Group IDs
 
 Generating secrets.h
 `python3 ./firmware/secrets_to_c_header.py ./global.secrets <PIN> <GroupID>=<Permission>`

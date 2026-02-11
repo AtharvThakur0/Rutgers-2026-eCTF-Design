@@ -13,9 +13,15 @@
 
 #include "simple_uart.h"
 
+#define OPEN_CONNECTION 1
 /**********************************************************
  *************** HARDWARE ABSTRACTIONS ********************
  **********************************************************/
+
+
+void ecdh(void) {
+    
+}
 
 // This holds the two UART configurations necessary for communication
 UART_Regs *uart_inst[] = {UART_0_INST, UART_1_INST};

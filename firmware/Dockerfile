@@ -13,6 +13,7 @@ WORKDIR /root
 # Install Requisite Packages
 # do this first because it takes the longest
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+    libsodium-dev \
     python3 \
     make \
     wget \

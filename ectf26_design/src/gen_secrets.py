@@ -45,12 +45,10 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     # save the ECC private key to host
     # in docker, make sure to save to persisitent volume
-    with open("host_private_key.pem", "wb") as f:
-        f.write(private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption() # Or use a password
-        ))
+
+
+    private_value = private_key.private_numbers().private_value
+    private_key_bytes = private_value.to_bytes(32, byteorder='big')
 
     serialized_public = public_key.public_bytes(
         encoding=serialization.Encoding.X962,
@@ -71,7 +69,7 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     group_bytes = b"".join(group_list)
 
-    output = serialized_public + aes_key + group_bytes 
+    output = serialized_public + private_key_bytes + aes_key + group_bytes 
 
     return output
 
@@ -116,7 +114,6 @@ def main():
 
     secrets = gen_secrets(args.groups)
 
-    # Print the generated secrets for your own debugging
     # Attackers will NOT have access to the output of this, but feel free to remove
 
     # Open the file, erroring if the file exists unless the --force arg is provided
@@ -125,7 +122,7 @@ def main():
         f.write(secrets)
 
     # For your own debugging. Feel free to remove
-    logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
+    # logger.success(f"Wrote secrets to {str(args.secrets_file.absolute())}")
 
 
 if __name__ == "__main__":
