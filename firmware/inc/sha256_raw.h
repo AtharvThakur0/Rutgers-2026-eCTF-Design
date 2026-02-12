@@ -1,5 +1,6 @@
 /**
  * @file sha256_raw.h
+ * @brief Self-contained SHA-256, HMAC-SHA-256, and HKDF (RFC 5869).
  * @date 2026
  *
  * No dynamic allocation.  All state lives in caller-supplied structs or
@@ -120,9 +121,11 @@ void hmac_sha256_raw(const uint8_t *key, size_t key_len,
                      uint8_t mac[HMAC_SHA256_RAW_SIZE]);
 
 /* =========================================================================
+ * HKDF (RFC 5869)
  * ========================================================================= */
 
 /**
+ * @brief HKDF-Extract: PRK = HMAC-SHA-256(salt, IKM).
  *
  * @param salt      Salt value (may be NULL if @p salt_len == 0, in which
  *                  case a 32-byte zero salt is used per RFC 5869).
@@ -131,19 +134,23 @@ void hmac_sha256_raw(const uint8_t *key, size_t key_len,
  * @param ikm_len   Length of @p ikm in bytes.
  * @param prk       Output pseudorandom key (32 bytes).
  */
+void hkdf_extract_sha256(const uint8_t *salt, size_t salt_len,
                           const uint8_t *ikm,  size_t ikm_len,
                           uint8_t prk[SHA256_RAW_DIGEST_SIZE]);
 
 /**
+ * @brief HKDF-Expand: derive @p out_len bytes of key material.
  *
  * @p out_len must be ≤ 255 * SHA256_RAW_DIGEST_SIZE (8160 bytes).
  *
+ * @param prk       Pseudorandom key from HKDF-Extract.
  * @param prk_len   Length of @p prk in bytes (typically 32).
  * @param info      Context/application-specific string.
  * @param info_len  Length of @p info in bytes.
  * @param out       Output buffer.
  * @param out_len   Requested output length in bytes.
  */
+void hkdf_expand_sha256(const uint8_t *prk,  size_t prk_len,
                          const uint8_t *info, size_t info_len,
                          uint8_t *out, size_t out_len);
 

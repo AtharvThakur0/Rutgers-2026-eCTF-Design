@@ -264,3 +264,49 @@ void hmac_sha256_raw(const uint8_t *key, size_t key_len,
  * HKDF (RFC 5869)
  * ========================================================================= */
 
+void hkdf_extract_sha256(const uint8_t *salt, size_t salt_len,
+                          const uint8_t *ikm,  size_t ikm_len,
+                          uint8_t prk[SHA256_RAW_DIGEST_SIZE]) {
+    /* If salt is absent, use a string of HashLen zeros per RFC 5869 §2.2 */
+    static const uint8_t zero_salt[SHA256_RAW_DIGEST_SIZE] = {0};
+    if (salt == NULL || salt_len == 0u) {
+        salt     = zero_salt;
+        salt_len = SHA256_RAW_DIGEST_SIZE;
+    }
+    hmac_sha256_raw(salt, salt_len, ikm, ikm_len, prk);
+}
+
+void hkdf_expand_sha256(const uint8_t *prk,  size_t prk_len,
+                         const uint8_t *info, size_t info_len,
+                         uint8_t *out, size_t out_len) {
+    size_t done = 0u;
+    uint8_t counter = 0u;
+
+    memset(g_hkdf_block, 0, sizeof(g_hkdf_block));
+
+    while (done < out_len) {
+        size_t take;
+
+        counter++;
+
+        /* T(i) = HMAC(PRK, T(i-1) || info || i) */
+        hmac_sha256_raw_init(&g_hkdf_ctx, prk, prk_len);
+        if (counter > 1u) {
+            /* T(0) is the empty string; skip on the first iteration */
+            hmac_sha256_raw_update(&g_hkdf_ctx, g_hkdf_block, SHA256_RAW_DIGEST_SIZE);
+        }
+        if (info_len > 0u) {
+            hmac_sha256_raw_update(&g_hkdf_ctx, info, info_len);
+        }
+        hmac_sha256_raw_update(&g_hkdf_ctx, &counter, 1u);
+        hmac_sha256_raw_final(&g_hkdf_ctx, g_hkdf_block);
+        memset(&g_hkdf_ctx, 0, sizeof(g_hkdf_ctx));
+
+        take = out_len - done;
+        if (take > SHA256_RAW_DIGEST_SIZE) { take = SHA256_RAW_DIGEST_SIZE; }
+        memcpy(out + done, g_hkdf_block, take);
+        done += take;
+    }
+
+    memset(g_hkdf_block, 0, sizeof(g_hkdf_block));
+}
