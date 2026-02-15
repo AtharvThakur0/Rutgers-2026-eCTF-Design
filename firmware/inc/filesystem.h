@@ -95,6 +95,8 @@ typedef struct {
     group_id_t group_id;
     char name[MAX_NAME_SIZE];
     uint16_t contents_len;
+    uint8_t nonce[12]; // SECURE_CRYPTO_AES_GCM_NONCE_SIZE
+    uint8_t tag[16];   // SECURE_CRYPTO_AES_GCM_TAG_SIZE
     uint8_t contents[MAX_CONTENTS_SIZE];
 } file_t;
 
