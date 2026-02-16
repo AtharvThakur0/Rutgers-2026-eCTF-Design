@@ -36,25 +36,49 @@
 int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertext) {
     Aes ctx; // Context for encryption
     int result; // Library result
-
+    int result2;
+    byte iv[16];
+    byte authTag[32];
+    byte authIn[16];
     // Ensure valid length
     if (len <= 0 || len % BLOCK_SIZE)
         return -1;
 
     // Set the key for encryption
-    result = wc_AesSetKey(&ctx, key, 16, NULL, AES_ENCRYPTION);
+    result = wc_AesGcmSetKey(&ctx, key, 32, NULL, AES_ENCRYPTION);
     if (result != 0)
         return result; // Report error
 
 
     // Encrypt each block
-    for (int i = 0; i < len - 1; i += BLOCK_SIZE) {
-        result = wc_AesEncryptDirect(&ctx, ciphertext + i, plaintext + i);
+    for (int i = 0; i < len; i += BLOCK_SIZE) {
+        result2 = wc_AesGcmEncrypt(&ctx, ciphertext + i, plaintext + i, sizeof(ciphertext), iv, sizeof(iv)), authTag, sizeof(authTag), authIn, sizeof(authIn);
         if (result != 0)
-            return result; // Report error
+            return result2; // Report error
     }
     return 0;
 }
+
+int HKDF(int type, const byte * inKey, word32 inKeySz, const byte * salt, word32 saltSz, const byte * info, word32 infoSz, byte * out, word32 outSz){
+
+    int ret;
+    int ret2;
+    byte key[]; // initialize with key ;
+    byte salt[];  // initialize with salt ;
+    byte derivedKey[MAX_DIGEST_SIZE];
+
+    int ret = wc_HKDF_Extract(WC_SHA512, salt, sizeof(salt), key, sizeof(key), derivedKey);
+    if ( ret != 0 ) {
+        return ret;// error generating derived key
+    }
+    
+    int ret2 = wc_HKDF_Expand(WC_SHA512, key, sizeof(key), NULL, 0,
+    derivedKey, sizeof(derivedKey));
+    if ( ret2 != 0 ) {
+        return ret2;// error generating derived key
+    }
+
+}   
 
 /** @brief Decrypts ciphertext using a symmetric cipher
  *
@@ -72,21 +96,25 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertex
 int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
     Aes ctx; // Context for decryption
     int result; // Library result
+    int result2;
+    byte iv[16];
+    byte authTag[32];
+    byte authIn[16];
 
     // Ensure valid length
     if (len <= 0 || len % BLOCK_SIZE)
         return -1;
 
     // Set the key for decryption
-    result = wc_AesSetKey(&ctx, key, 16, NULL, AES_DECRYPTION);
+    result = wc_AesGcmSetKey(&ctx, key, 16, NULL, AES_DECRYPTION);
     if (result != 0)
         return result; // Report error
 
     // Decrypt each block
     for (int i = 0; i < len - 1; i += BLOCK_SIZE) {
-        result = wc_AesDecryptDirect(&ctx, plaintext + i, ciphertext + i);
-        if (result != 0)
-            return result; // Report error
+        result2 = wc_AesGcmDecrypt(&ctx, ciphertext + i, plaintext + i, sizeof(ciphertext), iv, sizeof(iv), authTag, sizeof(authTag), authIn, sizeof(authIn));
+        if (result2 != 0)
+            return result2; // Report error
     }
     return 0;
 }

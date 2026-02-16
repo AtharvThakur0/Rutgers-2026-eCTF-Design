@@ -19,10 +19,12 @@
 
 #include "wolfssl/wolfcrypt/aes.h"
 #include "wolfssl/wolfcrypt/hash.h"
+#include "wolfssl/wolfcrypt/ecc.h"
+#include "wolfssl/wolfcrypt/hmac.h"
 
 /******************************** MACRO DEFINITIONS ********************************/
 #define BLOCK_SIZE AES_BLOCK_SIZE
-#define KEY_SIZE 16
+#define KEY_SIZE 32
 #define HASH_SIZE MD5_DIGEST_SIZE
 
 /******************************** FUNCTION PROTOTYPES ********************************/
@@ -32,7 +34,7 @@
  *          plaintext to encrypt
  * @param len The length of the plaintext to encrypt. Must be a multiple of
  *          BLOCK_SIZE (16 bytes)
- * @param key A pointer to a buffer of length KEY_SIZE (16 bytes) containing
+ * @param key A pointer to a buffer of length KEY_SIZE (32 bytes) containing
  *          the key to use for encryption
  * @param ciphertext A pointer to a buffer of length len where the resulting
  *          ciphertext will be written to
@@ -47,7 +49,7 @@ int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertex
  *           ciphertext to decrypt
  * @param len The length of the ciphertext to decrypt. Must be a multiple of
  *           BLOCK_SIZE (16 bytes)
- * @param key A pointer to a buffer of length KEY_SIZE (16 bytes) containing
+ * @param key A pointer to a buffer of length KEY_SIZE (32 bytes) containing
  *           the key to use for decryption
  * @param plaintext A pointer to a buffer of length len where the resulting
  *           plaintext will be written to
@@ -67,6 +69,54 @@ int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintex
  * @return 0 on success, non-zero for other error
  */
 int hash(void *data, size_t len, uint8_t *hash_out);
+
+int wc_ecc_sign_hash(
+    const byte * in,
+    word32 inlen,
+    byte * out,
+    word32 * outlen,
+    WC_RNG * rng,
+    ecc_key * key
+)
+
+int wc_HmacSetKey(
+    Hmac * hmac,
+    int type,
+    const byte * key,
+    word32 keySz
+)
+
+int wc_HKDF(
+    int type,
+    const byte * inKey,
+    word32 inKeySz,
+    const byte * salt,
+    word32 saltSz,
+    const byte * info,
+    word32 infoSz,
+    byte * out,
+    word32 outSz
+)
+
+int wc_HKDF_Extract(
+    int type,
+    const byte * salt,
+    word32 saltSz,
+    const byte * inKey,
+    word32 inKeySz,
+    byte * out
+)
+
+int wc_HKDF_Expand(
+    int type,
+    const byte * inKey,
+    word32 inKeySz,
+    const byte * info,
+    word32 infoSz,
+    byte * out,
+    word32 outSz
+)
+
 
 #endif // CRYPTO_EXAMPLE
 #endif // ECTF_CRYPTO_H
