@@ -70,7 +70,11 @@ static bool g_initialized = false;
  */
 static void fail_delay(void) {
   for (volatile uint32_t i = 0u; i < 12500000UL; i++) {
-    /* timing delay — body intentionally empty */
+#if !defined(HOST_TEST) && (defined(__MSPM0_HAS_WWDT__) || defined(WWDT0))
+    if (i % 1000000u == 0u) {
+      DL_WWDT_restart(WWDT0);
+    }
+#endif
   }
 }
 
@@ -260,6 +264,12 @@ int pin_change(const uint8_t *old_pin, size_t old_len, const uint8_t *new_pin,
   }
   g_fail_count = 0u;
   return write_pin_state();
+}
+
+bool get_pin_hash(const uint8_t *pin, size_t pin_len, uint8_t out_hash[32]) {
+  if (pin == NULL || out_hash == NULL) return false;
+  if (pin_len < (size_t)PIN_MIN_LEN || pin_len > (size_t)PIN_MAX_LEN) return false;
+  return compute_pin_hash(pin, pin_len, out_hash);
 }
 
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
