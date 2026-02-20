@@ -74,30 +74,37 @@ void flash_simple_read(uint32_t address, void* buffer, uint32_t size) {
 */
 int flash_simple_write(uint32_t address, void* buffer, uint32_t size) {
     volatile DL_FLASHCTL_COMMAND_STATUS cmdStatus;
+    const uint8_t *p = (const uint8_t *)buffer;
+    uint32_t remaining = size;
+    uint32_t current_addr = address;
+
     DL_FlashCTL_executeClearStatus(FLASHCTL);
     DL_FlashCTL_unprotectSector(FLASHCTL, address, DL_FLASHCTL_REGION_SELECT_MAIN);
 
-    // program function expects size to be the number of 32-bit words
-    uint32_t size_32b = (size % 4 == 0) ? (size / 4) : (size / 4) + 1;
-    // it also expects it to be an even number
-    size_32b = (size_32b % 2 == 0) ? size_32b : size_32b + 1;
+    while (remaining > 0) {
+        uint32_t chunk_size = (remaining < 64) ? remaining : 64;
+        uint32_t write_data[16]; // 64 bytes
+        memset(write_data, 0xff, sizeof(write_data));
+        memcpy(write_data, p, chunk_size);
 
-    // write the data into a correctly sized region to ensure no undefined behavior
-    uint32_t write_data[size_32b];
-    memset(write_data, 0xff, size_32b*4);
-    memcpy(write_data, buffer, size);
+        uint32_t words = (chunk_size + 3) / 4;
+        if (words % 2 != 0) words++; // Must be even number of words (64-bit aligned)
 
-    // if memory section is corrected, make sure to write the ECC (you have been warned)
-    cmdStatus = DL_FlashCTL_programMemoryBlockingFromRAM64WithECCGenerated(
-        FLASHCTL, address, (uint32_t *)write_data, size_32b, DL_FLASHCTL_REGION_SELECT_MAIN
-    );
-    if (cmdStatus == DL_FLASHCTL_COMMAND_STATUS_FAILED) {
-        return -1;
+        cmdStatus = DL_FlashCTL_programMemoryBlockingFromRAM64WithECCGenerated(
+            FLASHCTL, current_addr, write_data, words, DL_FLASHCTL_REGION_SELECT_MAIN
+        );
+
+        if (cmdStatus == DL_FLASHCTL_COMMAND_STATUS_FAILED) {
+            return -1;
+        }
+        if (!DL_FlashCTL_waitForCmdDone(FLASHCTL)) {
+            return -1;
+        }
+
+        p += chunk_size;
+        current_addr += chunk_size;
+        remaining -= chunk_size;
     }
-    // returns a boolean, so handle that accordingly
-    bool ret = DL_FlashCTL_waitForCmdDone(FLASHCTL);
-    if (ret == false) {
-        return -1;
-    }
+
     return 0;
 }
