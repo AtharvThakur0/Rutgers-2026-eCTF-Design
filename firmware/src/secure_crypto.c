@@ -336,9 +336,26 @@ bool secure_crypto_hmac_sha256(const uint8_t *key, size_t key_len,
     return hmac_sha256(key, key_len, message, msg_len, mac_out);
 }
 
-/* =========================================================================
- * AES-256-GCM
- * ========================================================================= */
+bool secure_crypto_derive_chunk_key(const uint8_t *master_key, size_t master_len,
+                                    uint32_t chunk_idx, uint8_t *out,
+                                    size_t out_len) {
+    if (!master_key || !out || out_len == 0u) {
+        return false;
+    }
+
+    uint8_t info[17];
+    const char *label = "blob_chunk_v1";
+    size_t label_len = strlen(label);
+    memcpy(info, label, label_len);
+    info[label_len + 0] = (uint8_t)(chunk_idx & 0xFFu);
+    info[label_len + 1] = (uint8_t)((chunk_idx >> 8) & 0xFFu);
+    info[label_len + 2] = (uint8_t)((chunk_idx >> 16) & 0xFFu);
+    info[label_len + 3] = (uint8_t)((chunk_idx >> 24) & 0xFFu);
+
+    hkdf_expand_sha256(master_key, master_len, info, label_len + 4,
+                       out, out_len);
+    return true;
+}
 
 bool secure_crypto_aes_gcm_encrypt(const uint8_t *key, size_t key_len,
                                    const uint8_t *nonce, size_t nonce_len,

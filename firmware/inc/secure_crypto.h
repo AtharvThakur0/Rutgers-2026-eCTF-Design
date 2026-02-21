@@ -160,6 +160,10 @@ bool secure_crypto_aes_gcm_decrypt(const uint8_t *key, size_t key_len,
                                    const uint8_t *tag, size_t tag_len,
                                    uint8_t *plaintext_out, size_t pt_out_len);
 
+bool secure_crypto_derive_chunk_key(const uint8_t *master_key, size_t master_len,
+                                    uint32_t chunk_idx, uint8_t *out,
+                                    size_t out_len);
+
 /* =========================================================================
  * Sign / verify (HMAC-SHA-256 replacing ECDSA)
  *
