@@ -17,11 +17,11 @@
 extern "C" {
 #endif
 
-#define SECURE_BLOB_STORE_FLASH_BASE 0x6000u
+#define SECURE_BLOB_STORE_FLASH_BASE 0x22000u
 #define SECURE_BLOB_STORE_FLASH_END  0x3A000u
 #define SECURE_BLOB_STORE_FAT_ADDR   0x3A000u
 
-#define SECURE_BLOB_STORE_MAX_SLOTS 16u
+#define SECURE_BLOB_STORE_MAX_SLOTS 8u
 #define SECURE_BLOB_STORE_AUTO_SLOT 0xFFu
 
 #define SECURE_BLOB_STORE_SLOT_SIZE \
@@ -48,6 +48,7 @@ typedef enum {
     SECURE_BLOB_STORE_IO_ERROR = -7,
     SECURE_BLOB_STORE_CRYPTO_ERROR = -8,
     SECURE_BLOB_STORE_CORRUPT = -9,
+    SECURE_BLOB_STORE_BAD_LEN = -10,
 } secure_blob_store_status_t;
 
 extern secure_blob_fat_entry_t g_fat[SECURE_BLOB_STORE_MAX_SLOTS];
@@ -59,13 +60,30 @@ secure_blob_store_status_t blob_write(uint8_t slot,
                                       const uint8_t owner_pin_hash
                                           [SECURE_BLOB_STORE_PIN_HASH_SIZE],
                                       uint32_t group_mask);
-secure_blob_store_status_t blob_read(uint8_t slot,
-                                     const uint8_t pin_hash
-                                         [SECURE_BLOB_STORE_PIN_HASH_SIZE],
-                                     uint32_t group_mask,
-                                     uint8_t *out,
-                                     size_t *out_len);
+secure_blob_store_status_t blob_read_all(uint8_t slot,
+                                         const uint8_t pin_hash
+                                             [SECURE_BLOB_STORE_PIN_HASH_SIZE],
+                                         uint32_t group_mask, uint8_t *out,
+                                         size_t *out_len);
+
+secure_blob_store_status_t blob_read_all_group_mask(uint8_t slot,
+                                                    uint32_t group_mask,
+                                                    uint8_t *out,
+                                                    size_t *out_len);
+
+/* Streaming blob read */
+secure_blob_store_status_t blob_read_init(uint8_t slot,
+                                          const uint8_t pin_hash
+                                              [SECURE_BLOB_STORE_PIN_HASH_SIZE],
+                                          uint32_t group_mask,
+                                          size_t *plaintext_len_out);
+
+secure_blob_store_status_t blob_read_chunk(uint8_t *out, size_t chunk_len);
+
+secure_blob_store_status_t blob_read_finish(void);
+
 secure_blob_store_status_t blob_delete(uint8_t slot);
+
 
 int init_blob_store(void);
 
