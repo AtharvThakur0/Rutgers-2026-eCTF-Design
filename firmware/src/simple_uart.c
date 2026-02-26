@@ -13,15 +13,22 @@
 
 #include "simple_uart.h"
 
+#define OPEN_CONNECTION 1
+#define UART_DRAIN_TIMEOUT_MS 5u
 /**********************************************************
  *************** HARDWARE ABSTRACTIONS ********************
  **********************************************************/
+
+
+void ecdh(void) {
+    
+}
 
 // This holds the two UART configurations necessary for communication
 UART_Regs *uart_inst[] = {UART_0_INST, UART_1_INST};
 
 UART_Regs *get_uart_handle(int uart_id) {
-    if (uart_id < 0 || uart_id > CONFIG_UART_COUNT) {
+    if (uart_id < 0 || uart_id >= CONFIG_UART_COUNT) {
         // Default on bad input is 0
         return uart_inst[0];
     }
@@ -40,6 +47,44 @@ int uart_readbyte(int uart_id){
     return data;
 }
 
+int uart_try_readbyte(int uart_id)
+{
+    UART_Regs *uart = get_uart_handle(uart_id);
+
+    if (DL_UART_isRXFIFOEmpty(uart)) {
+        return -1;
+    }
+
+    return (int)(uint8_t)DL_UART_receiveData(uart);
+}
+
+int uart_readbyte_timeout(int uart_id, uint32_t timeout_ms)
+{
+    if (timeout_ms == UART_RX_TIMEOUT_MS) {
+        for (;;) {
+            int b = uart_try_readbyte(uart_id);
+            if (b >= 0) {
+                return b;
+            }
+            __asm volatile("nop");
+        }
+    }
+
+    uint64_t loops64 = (uint64_t)timeout_ms * (uint64_t)UART_TIMEOUT_LOOPS_PER_MS;
+    uint32_t loops = (loops64 > UINT32_MAX) ? UINT32_MAX : (uint32_t)loops64;
+
+    while (loops > 0u) {
+        int b = uart_try_readbyte(uart_id);
+        if (b >= 0) {
+            return b;
+        }
+        loops--;
+        __asm volatile("nop");
+    }
+
+    return -1;
+}
+
 /** @brief Writes a byte to UART.
  *
  *  @param uart_id The index of UART to use
@@ -49,3 +94,9 @@ void uart_writebyte(int uart_id, uint8_t data) {
     DL_UART_transmitDataBlocking(get_uart_handle(uart_id), data);
 }
 
+void uart_drain_rx(int uart_id)
+{
+    while (uart_readbyte_timeout(uart_id, UART_DRAIN_TIMEOUT_MS) >= 0) {
+        /* discard */
+    }
+}

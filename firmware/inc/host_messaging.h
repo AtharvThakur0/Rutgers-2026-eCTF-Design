@@ -35,6 +35,9 @@ typedef enum {
     DEBUG_MSG = 'D',        // 'D' - 0x44
     ERROR_MSG = 'E',        // 'E' - 0x45
     ECHO_MSG = 0xEE,        // 0xEE - test echo (not a final command)
+    DELETE_FILE_MSG = 'X',  // 'X' - 0x58 - delete encrypted blob
+    CHANGE_PIN_MSG  = 'P',  // 'P' - 0x50 - change stored PIN
+    BOOT_FLAG_MSG   = 'G',  // 'G' - 0x47 - return provisioned boot flag
 } msg_type_t;
 
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
@@ -47,9 +50,10 @@ typedef struct {
 
 typedef enum {
     MSG_OK = 0,
-    MSG_BAD_PTR,
-    MSG_NO_ACK,
-    MSG_BAD_LEN,
+    MSG_BAD_PTR = 1,
+    MSG_TIMEOUT = -2,
+    MSG_NO_ACK = 2,
+    MSG_BAD_LEN = 3,
     // <0 is UART error
 } msg_status_t;
 
@@ -67,6 +71,16 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack);
  *  @return 0 on success. A negative value on error.
 */
 int write_hex(int uart_id, msg_type_t type, const void *buf, size_t len);
+
+/** @brief Send only the message header.
+ *
+ *  @param uart_id The id of the uart where the message is to be sent
+ *  @param type Message type.
+ *  @param len Total length of the payload that will follow.
+ *
+ *  @return 0 on success. A negative value on error.
+ */
+int write_header(int uart_id, msg_type_t type, uint16_t len);
 
 /** @brief Send a message to the host, expecting an ack after every 256 bytes.
  *
@@ -89,6 +103,20 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len);
  *  @return 0 on success, a negative number on failure
 */
 int read_packet(int uart_id, msg_type_t* cmd, void *buf, uint16_t *len);
+
+/** @brief Like read_packet() but returns MSG_TIMEOUT if no magic byte arrives
+ *  within @p timeout_ms milliseconds.
+ *
+ *  @param uart_id       UART to read from.
+ *  @param cmd           Receives the opcode.
+ *  @param buf           Receives the payload (may be NULL).
+ *  @param len           In: buffer capacity (0 = unchecked). Out: actual payload length.
+ *  @param timeout_ms    Maximum wait for the first magic byte.
+ *
+ *  @return MSG_OK on success, MSG_TIMEOUT if no packet arrived, other MSG_* on error.
+*/
+int read_packet_timeout(int uart_id, msg_type_t *cmd, void *buf, uint16_t *len,
+                        uint32_t timeout_ms);
 
 // Macro definitions to print the specified format for error messages
 #define print_error(msg) write_packet(CONTROL_INTERFACE, ERROR_MSG, msg, strlen(msg))
