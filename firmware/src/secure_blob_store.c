@@ -154,6 +154,7 @@ static secure_blob_store_status_t erase_slot_pages(uint8_t slot)
     for (uint32_t offset = 0u;
          offset < (uint32_t)SECURE_BLOB_STORE_SLOT_SIZE;
          offset += (uint32_t)SECURE_BLOB_STORE_PAGE_SIZE) {
+        /* Service watchdog across multi-page flash operations */
         if (flash_simple_erase_page(base + offset) != 0) {
             return SECURE_BLOB_STORE_IO_ERROR;
         }
