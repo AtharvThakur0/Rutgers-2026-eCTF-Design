@@ -129,22 +129,19 @@ static void build_aad(const secure_blob_flash_header_t *header)
     memcpy(dst, header->nonce, sizeof(header->nonce));
 }
 
-static bool derive_slot_key(const secure_crypto_root_secret_t *root,
-                            uint8_t slot,
+static bool derive_file_key(const secure_crypto_root_secret_t *root,
+                            uint32_t group_id,
                             uint8_t key[SECURE_CRYPTO_DERIVED_KEY_SIZE])
 {
-    static const uint8_t label[] = "blob_slot_key_v1";
-    uint8_t info[sizeof(label) - 1u + 4u];
-
-    if (!root || !key) {
+    if (!root || !key || group_id > UINT16_MAX) {
         return false;
     }
 
-    memcpy(info, label, sizeof(label) - 1u);
-    write_u32_le(info + sizeof(label) - 1u, slot);
-    return secure_crypto_hmac_sha256(root->k_master, sizeof(root->k_master),
-                                     info, sizeof(info),
-                                     key, SECURE_CRYPTO_DERIVED_KEY_SIZE);
+    /* A file key is bound to its authorization group, not its local slot.
+     * Slot-derived keys make an encrypted record impossible to validate after
+     * an authorized device receives it into a different slot. */
+    return secure_crypto_derive_file_enc_key(root, (uint16_t)group_id, key,
+                                             SECURE_CRYPTO_DERIVED_KEY_SIZE);
 }
 
 static secure_blob_store_status_t erase_slot_pages(uint8_t slot)
@@ -304,7 +301,7 @@ secure_blob_store_status_t blob_write(
         print_debug("DBG bw: root_secret FAIL\n");
         return SECURE_BLOB_STORE_CRYPTO_ERROR;
     }
-    if (!derive_slot_key(&root, resolved_slot, master_key)) {
+    if (!derive_file_key(&root, group_mask, master_key)) {
         print_debug("DBG bw: derive_key FAIL\n");
         memset(&root, 0, sizeof(root));
         return SECURE_BLOB_STORE_CRYPTO_ERROR;
@@ -468,7 +465,7 @@ static secure_blob_store_status_t blob_read_init_internal(
     if (!security_get_root_secret(&root)) {
         return SECURE_BLOB_STORE_CRYPTO_ERROR;
     }
-    if (!derive_slot_key(&root, slot, g_read_state.master_key)) {
+    if (!derive_file_key(&root, header.group_mask, g_read_state.master_key)) {
         memset(&root, 0, sizeof(root));
         return SECURE_BLOB_STORE_CRYPTO_ERROR;
     }
