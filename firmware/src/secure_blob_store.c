@@ -210,6 +210,12 @@ static secure_blob_store_status_t load_header(uint8_t slot,
             (unsigned long)entry->record_len, (unsigned long)entry->plaintext_len);
     print_debug(dbg);
 
+    /* Validate page boundary alignment */
+    if ((entry->flash_addr % FLASH_PAGE_SIZE) != 0u) {
+        print_debug("DBG lh: unaligned flash address\n");
+        return SECURE_BLOB_STORE_CORRUPT;
+    }
+
     if (entry->flash_addr != blob_slot_base(slot) ||
         entry->record_len < sizeof(*header) ||
         entry->record_len > SECURE_BLOB_STORE_SLOT_SIZE ||
