@@ -20,6 +20,12 @@
 #define NONCE_SIZE 16
 #define TAG_SIZE   16
 
+static uint32_t uart_frame_timeout_ms(int uart_id)
+{
+    return (uart_id == CONTROL_INTERFACE) ? UART_RX_TIMEOUT_MS
+                                          : UART_XFER_TIMEOUT_MS;
+}
+
 size_t build_packet(uint8_t opcode, uint8_t *nonce, uint8_t *ciphertext,
                     uint16_t cipher_len, uint8_t *tag, uint8_t *message)
 {
@@ -53,10 +59,18 @@ size_t build_packet(uint8_t opcode, uint8_t *nonce, uint8_t *ciphertext,
  * Used inside write_packet/write_bytes to avoid re-entering write_packet. */
 static int await_ack(int uart_id)
 {
-    if ((uint8_t)uart_readbyte(uart_id) != (uint8_t)MSG_MAGIC) return MSG_NO_ACK;
-    if ((uint8_t)uart_readbyte(uart_id) != (uint8_t)ACK_MSG)   return MSG_NO_ACK;
-    uart_readbyte(uart_id); /* len low  */
-    uart_readbyte(uart_id); /* len high */
+    uint32_t timeout_ms = uart_frame_timeout_ms(uart_id);
+    int b = uart_readbyte_timeout(uart_id, timeout_ms);
+
+    if (b < 0) return MSG_TIMEOUT;
+    if ((uint8_t)b != (uint8_t)MSG_MAGIC) return MSG_NO_ACK;
+
+    b = uart_readbyte_timeout(uart_id, timeout_ms);
+    if (b < 0) return MSG_TIMEOUT;
+    if ((uint8_t)b != (uint8_t)ACK_MSG) return MSG_NO_ACK;
+
+    if (uart_readbyte_timeout(uart_id, timeout_ms) < 0) return MSG_TIMEOUT;
+    if (uart_readbyte_timeout(uart_id, timeout_ms) < 0) return MSG_TIMEOUT;
     return MSG_OK;
 }
 
@@ -91,7 +105,8 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack)
         }
 
         if (should_ack) {
-            if (await_ack(uart_id) != MSG_OK) return MSG_NO_ACK;
+            int ack_rc = await_ack(uart_id);
+            if (ack_rc != MSG_OK) return ack_rc;
         }
 
         offset += block;
@@ -100,7 +115,7 @@ int write_bytes(int uart_id, const void *buf, uint16_t len, bool should_ack)
     return MSG_OK;
 }
 
-int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len)
+int write_header(int uart_id, msg_type_t type, uint16_t len)
 {
     msg_header_t hdr;
     hdr.magic = MSG_MAGIC;
@@ -119,10 +134,20 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len)
     bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG && type != ERROR_MSG);
 
     if (needs_ack) {
-        if (await_ack(uart_id) != MSG_OK) return MSG_NO_ACK;
+        int ack_rc = await_ack(uart_id);
+        if (ack_rc != MSG_OK) return ack_rc;
     }
 
+    return MSG_OK;
+}
+
+int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len)
+{
+    int rc = write_header(uart_id, type, len);
+    if (rc != MSG_OK) return rc;
+
     if (len > 0 && buf != NULL) {
+        bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG && type != ERROR_MSG);
         return write_bytes(uart_id, buf, len, needs_ack);
     }
 
@@ -134,22 +159,23 @@ int read_packet(int uart_id, msg_type_t *cmd, void *buf, uint16_t *len)
     if (cmd == NULL) return MSG_BAD_PTR;
 
     int b;
+    uint32_t timeout_ms = uart_frame_timeout_ms(uart_id);
 
     /* Drain bytes until we see the magic byte. */
     do {
-        b = uart_readbyte(uart_id);
-        if (b < 0) return b;
+        b = uart_readbyte_timeout(uart_id, timeout_ms);
+        if (b < 0) return MSG_TIMEOUT;
     } while ((uint8_t)b != (uint8_t)MSG_MAGIC);
 
     /* Read the command byte. */
-    b = uart_readbyte(uart_id);
-    if (b < 0) return b;
+    b = uart_readbyte_timeout(uart_id, timeout_ms);
+    if (b < 0) return MSG_TIMEOUT;
     *cmd = (msg_type_t)b;
 
     /* Read the 2-byte little-endian payload length. */
-    int lo = uart_readbyte(uart_id);
-    int hi = uart_readbyte(uart_id);
-    if (lo < 0 || hi < 0) return MSG_BAD_LEN;
+    int lo = uart_readbyte_timeout(uart_id, timeout_ms);
+    int hi = uart_readbyte_timeout(uart_id, timeout_ms);
+    if (lo < 0 || hi < 0) return MSG_TIMEOUT;
     uint16_t pkt_len = (uint16_t)lo | ((uint16_t)hi << 8);
 
     /* ACK the header chunk — the host is blocked in get_ack() waiting for
@@ -176,8 +202,58 @@ int read_packet(int uart_id, msg_type_t *cmd, void *buf, uint16_t *len)
             uint16_t block = remaining < 256 ? remaining : 256;
 
             for (uint16_t i = 0; i < block; i++) {
-                b = uart_readbyte(uart_id);
-                if (b < 0) return b;
+                b = uart_readbyte_timeout(uart_id, timeout_ms);
+                if (b < 0) return MSG_TIMEOUT;
+                p[offset + i] = (uint8_t)b;
+            }
+
+            write_ack(uart_id);
+            offset    += block;
+            remaining -= block;
+        }
+    }
+
+    return MSG_OK;
+}
+
+int read_packet_timeout(int uart_id, msg_type_t *cmd, void *buf, uint16_t *len,
+                        uint32_t timeout_ms)
+{
+    if (cmd == NULL) return MSG_BAD_PTR;
+
+    int b;
+    uint32_t sync_timeout_ms = uart_frame_timeout_ms(uart_id);
+
+    do {
+        b = uart_readbyte_timeout(uart_id, timeout_ms);
+        if (b < 0) return MSG_TIMEOUT;
+    } while ((uint8_t)b != (uint8_t)MSG_MAGIC);
+
+    b = uart_readbyte_timeout(uart_id, sync_timeout_ms);
+    if (b < 0) return MSG_TIMEOUT;
+    *cmd = (msg_type_t)b;
+
+    int lo = uart_readbyte_timeout(uart_id, sync_timeout_ms);
+    int hi = uart_readbyte_timeout(uart_id, sync_timeout_ms);
+    if (lo < 0 || hi < 0) return MSG_TIMEOUT;
+    uint16_t pkt_len = (uint16_t)lo | ((uint16_t)hi << 8);
+
+    write_ack(uart_id);
+
+    if (len != NULL && *len != 0 && pkt_len > *len) return MSG_BAD_LEN;
+    if (len != NULL) *len = pkt_len;
+
+    if (pkt_len > 0 && buf != NULL) {
+        uint8_t *p = (uint8_t *)buf;
+        uint16_t remaining = pkt_len;
+        uint16_t offset    = 0;
+
+        while (remaining > 0) {
+            uint16_t block = remaining < 256 ? remaining : 256;
+
+            for (uint16_t i = 0; i < block; i++) {
+                b = uart_readbyte_timeout(uart_id, sync_timeout_ms);
+                if (b < 0) return MSG_TIMEOUT;
                 p[offset + i] = (uint8_t)b;
             }
 
@@ -212,7 +288,8 @@ int write_hex(int uart_id, msg_type_t type, const void *buf, size_t len)
     bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG && type != ERROR_MSG);
 
     if (needs_ack) {
-        if (await_ack(uart_id) != MSG_OK) return MSG_NO_ACK;
+        int ack_rc = await_ack(uart_id);
+        if (ack_rc != MSG_OK) return ack_rc;
     }
 
     /* Stream hex nibbles in 256-byte blocks; ACK after each complete block. */
@@ -223,7 +300,8 @@ int write_hex(int uart_id, msg_type_t type, const void *buf, size_t len)
         block_pos += 2;
         if (block_pos == 256) {
             if (needs_ack) {
-                if (await_ack(uart_id) != MSG_OK) return MSG_NO_ACK;
+                int ack_rc = await_ack(uart_id);
+                if (ack_rc != MSG_OK) return ack_rc;
             }
             block_pos = 0;
         }
