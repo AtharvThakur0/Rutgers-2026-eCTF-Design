@@ -9,8 +9,26 @@ BUILDDIR ?= /tmp/build
 VPATH = "src"
 LINKERFILE = "firmware.ld"
 
-# to download wolfssl for the simple crypto example, `cd ./firmware/ && git clone https://github.com/wolfSSL/wolfssl`
-# then set this variable to 1
+# wolfSSL is required for secure_crypto.c AES-GCM support.
+# Prefer the build-container install at /opt/wolfssl and fall back to a
+# local checkout in firmware/wolfssl for ad-hoc host builds.
+WOLFSSL_DIR ?= $(if $(wildcard /opt/wolfssl/wolfssl/wolfcrypt/aes.h),/opt/wolfssl,$(if $(wildcard $(CURDIR)/wolfssl/wolfssl/wolfcrypt/aes.h),$(CURDIR)/wolfssl,))
+ifeq ($(strip $(WOLFSSL_DIR)),)
+$(error wolfSSL source tree not found. Rebuild the Docker image to install /opt/wolfssl, or clone wolfSSL into firmware/wolfssl)
+endif
+
+WOLFSSL_SRC_DIR = $(WOLFSSL_DIR)/wolfcrypt/src
+WOLFSSL_CORE_SRCS = \
+    $(WOLFSSL_SRC_DIR)/aes.c \
+    $(WOLFSSL_SRC_DIR)/misc.c
+WOLFSSL_CORE_OBJECTS = $(patsubst $(WOLFSSL_SRC_DIR)/%.c,$(BUILDDIR)/wolfssl_%.o,$(WOLFSSL_CORE_SRCS))
+WOLFSSL_EXAMPLE_SRCS = \
+    $(WOLFSSL_SRC_DIR)/hash.c \
+    $(WOLFSSL_SRC_DIR)/md5.c \
+    $(WOLFSSL_SRC_DIR)/cryptocb.c
+WOLFSSL_EXAMPLE_OBJECTS = $(patsubst $(WOLFSSL_SRC_DIR)/%.c,$(BUILDDIR)/wolfssl_%.o,$(WOLFSSL_EXAMPLE_SRCS))
+
+# to enable the legacy simple crypto example, set this to 1
 CRYPTO_EXAMPLE = 0
 
 OBJECTS = $(BUILDDIR)/HSM.so \
@@ -21,16 +39,21 @@ OBJECTS = $(BUILDDIR)/HSM.so \
     $(BUILDDIR)/host_messaging.so \
     $(BUILDDIR)/security.so \
     $(BUILDDIR)/filesystem.so \
-    $(BUILDDIR)/commands.so
+    $(BUILDDIR)/commands.so \
+    $(BUILDDIR)/secrets.so \
+    $(BUILDDIR)/trng.so \
+    $(BUILDDIR)/sha256_raw.so \
+    $(BUILDDIR)/secure_crypto.so \
+    $(BUILDDIR)/secure_design.so \
+    $(BUILDDIR)/storage.so \
+    $(BUILDDIR)/secure_blob_store.so \
+    $(WOLFSSL_CORE_OBJECTS)
 
 ifeq ($(CRYPTO_EXAMPLE), 1)
 OBJECTS += $(BUILDDIR)/simple_crypto.so
 
 # change C flags
 CFLAGS += -DCRYPTO_EXAMPLE=1
-CFLAGS += -DNO_WOLFSSL_DIR
-CFLAGS += -DWOLFSSL_AES_DIRECT
-CFLAGS += -DSINGLE_THREADED
 # From https://www.wolfssl.com/documentation/manuals/wolfssl/chapter02.html#building-with-gcc-arm
 CFLAGS += -DHAVE_PK_CALLBACKS
 CFLAGS += -DWOLFSSL_USER_IO
@@ -42,17 +65,15 @@ CFLAGS += -DNO_DEV_RANDOM
 CFLAGS += -DWC_NO_DEFAULT_DEVID
 CFLAGS += -DWOLF_CRYPTO_CB
 
-WOLFSSL_INC = wolfssl/wolfcrypt/src
-CFLAGS += -I./wolfssl
-
-# we need to build these objects for the simple crypto example
-OBJECTS += $(WOLFSSL_INC)/aes.o $(WOLFSSL_INC)/hash.o
-OBJECTS += $(WOLFSSL_INC)/md5.o $(WOLFSSL_INC)/cryptocb.o
+OBJECTS += $(WOLFSSL_EXAMPLE_OBJECTS)
 endif
 
 NAME = hsm
 
 CFLAGS += -I.. \
+    -I$(WOLFSSL_DIR) \
+    -DWOLFSSL_USER_SETTINGS \
+    -DNO_WOLFSSL_DIR \
     -D__MSPM0L2228__ \
     -O2 \
     "-I$(MSPM0_SDK_INSTALL_DIR)/source/third_party/CMSIS/Core/Include" \
@@ -85,12 +106,9 @@ $(BUILDDIR)/%.so: ./src/%.c | $(BUILDDIR)
 	@ echo Building $@
 	@ $(CC) $(CFLAGS) -c $< -o $@
 
-# if compiling with the crypto example, compile all crypto objects
-ifeq ($(CRYPTO_EXAMPLE), 1)
-$(WOLFSSL_INC)/%.o: $(WOLFSSL_INC)/%.c
+$(BUILDDIR)/wolfssl_%.o: $(WOLFSSL_SRC_DIR)/%.c | $(BUILDDIR)
 	@ echo Building $@
 	@ $(CC) $(CFLAGS) -c $< -o $@
-endif
 
 $(BUILDDIR)/$(NAME).elf: $(OBJECTS)
 	@ echo linking $@
