@@ -87,6 +87,19 @@ typedef struct {
     pin_t pin;
 } interrogate_command_t;
 
+/* delete_file: owner PIN + slot to erase */
+typedef struct {
+    pin_t  pin;
+    slot_t slot;
+} delete_file_command_t;
+
+/* change_pin: old PIN followed by new PIN (both PIN_LENGTH bytes) */
+typedef struct {
+    pin_t old_pin;
+    pin_t new_pin;
+} change_pin_command_t;
+/* boot_flag: no body — HSM ignores any payload */
+
 /**********************************************************
  ******************** RESPONSE STRUCTS ********************
  **********************************************************/
@@ -158,5 +171,52 @@ int interrogate(uint16_t pkt_len, uint8_t *buf);
  * @return 0 upon success. A negative value on error.
 */
 int listen(uint16_t pkt_len, uint8_t *buf);
+
+
+/** @brief Echo the payload back to the host (test-only, opcode 0xEE).
+ *
+ *  @param pkt_len The length of the incoming payload.
+ *  @param buf     A pointer to the incoming message buffer.
+ *
+ * @return 0 upon success. A negative value on error.
+*/
+int echo(uint16_t pkt_len, uint8_t *buf);
+
+/** @brief Delete an encrypted file slot (owner PIN required).
+ *
+ *  @param pkt_len The length of the incoming packet.
+ *  @param buf     Pointer to a delete_file_command_t.
+ *
+ * @return 0 upon success. A negative value on error.
+*/
+int delete_file(uint16_t pkt_len, uint8_t *buf);
+
+/** @brief Change the stored PIN (old PIN required).
+ *
+ *  @param pkt_len The length of the incoming packet.
+ *  @param buf     Pointer to a change_pin_command_t.
+ *
+ * @return 0 upon success. A negative value on error.
+*/
+int change_pin(uint16_t pkt_len, uint8_t *buf);
+
+/** @brief Return the device boot flag derived from K_master.
+ *
+ *  No PIN required. Returns 32 bytes of HMAC-SHA-256(K_master, label).
+ *
+ *  @param pkt_len The length of the incoming packet (ignored).
+ *  @param buf     Unused.
+ *
+ * @return 0 upon success. A negative value on error.
+*/
+int boot_flag(uint16_t pkt_len, uint8_t *buf);
+
+/** @brief Initialise encrypted blob store and name table from flash.
+ *
+ *  Must be called once from init() before any command handler runs.
+ *
+ * @return 0 on success, -1 on error.
+*/
+int init_commands(void);
 
 #endif // __COMMANDS_H__
