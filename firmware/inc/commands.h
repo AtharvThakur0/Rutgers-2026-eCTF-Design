@@ -211,6 +211,19 @@ int change_pin(uint16_t pkt_len, uint8_t *buf);
 */
 int boot_flag(uint16_t pkt_len, uint8_t *buf);
 
+/** @brief Return device_id (16 B) + file_id (16 B) for a stored slot.
+ *
+ *  No PIN required. Request body: 1 byte slot number (default 0 if absent).
+ *  device_id = HMAC-SHA-256(K_master, "ectf_boot_flag_v1")[:16]
+ *  file_id   = SHA-256(slot plaintext)[:16]
+ *
+ *  @param pkt_len The length of the incoming packet (0 or 1 byte).
+ *  @param buf     Optional 1-byte slot number.
+ *
+ * @return 0 upon success. A negative value on error.
+*/
+int digest(uint16_t pkt_len, uint8_t *buf);
+
 /** @brief Initialise encrypted blob store and name table from flash.
  *
  *  Must be called once from init() before any command handler runs.

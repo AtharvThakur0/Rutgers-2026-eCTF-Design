@@ -548,6 +548,74 @@ int boot_flag(uint16_t pkt_len, uint8_t *buf) {
 }
 
 /* =========================================================================
+ * DIGEST  (opcode 'H')
+ *
+ * Request body: 1 byte slot number (defaults to 0 if body is empty).
+ * Response: device_id[16] || file_id[16] = 32 bytes.
+ *   device_id = HMAC-SHA-256(K_master, "ectf_boot_flag_v1")[:16]
+ *   file_id   = SHA-256(slot plaintext)[:16]
+ *
+ * No PIN required.  Uses group-mask auth via blob_read_all_group_mask().
+ * ========================================================================= */
+int digest(uint16_t pkt_len, uint8_t *buf) {
+  static const uint8_t boot_label[] = "ectf_boot_flag_v1";
+  secure_crypto_root_secret_t root;
+  uint8_t full_hmac[SECURE_CRYPTO_HMAC_SIZE];
+  uint8_t sha256_out[SECURE_CRYPTO_SHA256_DIGEST_SIZE];
+  uint8_t response[32]; /* device_id[16] + file_id[16] */
+  secure_blob_store_status_t rc;
+  size_t plaintext_len = MAX_CONTENTS_SIZE;
+  uint8_t slot;
+  bool ok;
+
+  slot = (pkt_len >= 1u) ? buf[0] : 0u;
+
+  if (slot >= SECURE_BLOB_STORE_MAX_SLOTS || !slot_occupied(slot)) {
+    print_error("File not found\n");
+    return -1;
+  }
+
+  /* device_id = first 16 bytes of HMAC-SHA-256(K_master, boot_label) */
+  if (!security_get_root_secret(&root)) {
+    print_error("Crypto error\n");
+    return -1;
+  }
+  ok = secure_crypto_hmac_sha256(root.k_master, sizeof(root.k_master),
+                                 boot_label, sizeof(boot_label) - 1u,
+                                 full_hmac, sizeof(full_hmac));
+  memset(&root, 0, sizeof(root));
+  if (!ok) {
+    print_error("Crypto error\n");
+    return -1;
+  }
+  memcpy(response, full_hmac, 16u);
+
+  /* Decrypt slot contents (group-mask auth, no PIN required) */
+  rc = blob_read_all_group_mask(slot,
+                                (uint32_t)g_name_table[slot].group_id,
+                                g_large_buf.read_buf,
+                                &plaintext_len);
+  if (rc != SECURE_BLOB_STORE_OK) {
+    print_error("Read failed\n");
+    return -1;
+  }
+
+  /* file_id = SHA-256(plaintext)[:16] */
+  ok = secure_crypto_sha256(g_large_buf.read_buf, plaintext_len,
+                            sha256_out, sizeof(sha256_out));
+  if (plaintext_len > 0u) {
+    memset(g_large_buf.read_buf, 0, plaintext_len);
+  }
+  if (!ok) {
+    print_error("Crypto error\n");
+    return -1;
+  }
+  memcpy(response + 16u, sha256_out, 16u);
+
+  return write_packet(CONTROL_INTERFACE, DIGEST_MSG, response, sizeof(response));
+}
+
+/* =========================================================================
  * ECHO  (opcode 0xEE)  — test only, remove before production
  * ========================================================================= */
 int echo(uint16_t pkt_len, uint8_t *buf) {
