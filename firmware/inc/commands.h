@@ -19,6 +19,7 @@
 #include "simple_flash.h"
 #include "filesystem.h"
 #include "secrets.h"
+#include "secure_crypto.h"
 
 #define pkt_len_t uint16_t
 
@@ -75,8 +76,46 @@ typedef struct {
 
 typedef struct {
     slot_t slot;
-    group_permission_t permissions[MAX_PERMS];
+    uint32_t requester_nonce;
 } receive_request_t;
+
+/* UART1 receive authorization handshake.  These messages are private to
+ * HSM-to-HSM communication; the public host protocol remains unchanged. */
+typedef struct {
+    slot_t slot;
+    group_id_t group_id;
+    uint32_t requester_nonce;
+    uint32_t target_nonce;
+} receive_challenge_t;
+
+typedef struct {
+    slot_t slot;
+    group_id_t group_id;
+    uint32_t requester_nonce;
+    uint32_t target_nonce;
+    uint8_t proof[SECURE_CRYPTO_HMAC_SIZE];
+} receive_proof_t;
+
+typedef struct {
+    uint32_t requester_nonce;
+} interrogate_request_t;
+
+typedef struct {
+    uint32_t requester_nonce;
+    uint32_t target_nonce;
+} interrogate_challenge_t;
+
+typedef struct {
+    group_id_t group_id;
+    uint8_t proof[SECURE_CRYPTO_HMAC_SIZE];
+} interrogate_group_proof_t;
+
+typedef struct {
+    uint32_t requester_nonce;
+    uint32_t target_nonce;
+    uint8_t proof_count;
+    interrogate_group_proof_t proofs[MAX_PERMS];
+} interrogate_proof_t;
 
 typedef struct {
     uint8_t uuid[UUID_SIZE];
