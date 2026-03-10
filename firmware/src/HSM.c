@@ -50,44 +50,7 @@ static unsigned char uart_buf[MAX_MSG_SIZE];
  **********************************************************/
 
 
-/* Code between this #ifdef and the subsequent #endif will
-*  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
-*  the projectk.mk file. */
-#ifdef CRYPTO_EXAMPLE
-void crypto_example(void) {
-    // Example of how to utilize included simple_crypto.h
 
-    // This string is 16 bytes long including null terminator
-    // This is the block size of included symmetric encryption
-    char *data = "Crypto Example!";
-    uint8_t ciphertext[BLOCK_SIZE];
-    uint8_t key[KEY_SIZE];
-    uint8_t hash_out[HASH_SIZE];
-    uint8_t decrypted[BLOCK_SIZE];
-
-    char output_buf[128] = {0};
-
-    // Zero out the key
-    bzero(key, KEY_SIZE);
-
-    // Encrypt example data and print out
-    encrypt_sym((uint8_t*)data, BLOCK_SIZE, key, ciphertext);
-    print_debug("Encrypted data: \n");
-    print_hex_debug(ciphertext, BLOCK_SIZE);
-
-    // Hash example encryption results
-    hash(ciphertext, BLOCK_SIZE, hash_out);
-
-    // Output hash result
-    print_debug("Hash result: \n");
-    print_hex_debug(hash_out, HASH_SIZE);
-
-    // Decrypt the encrypted message and print out
-    decrypt_sym(ciphertext, BLOCK_SIZE, key, decrypted);
-    sprintf(output_buf, "Decrypted message: %s\n", decrypted);
-    print_debug(output_buf);
-}
-#endif  //CRYPTO_EXAMPLE
 
 /**********************************************************
  ********************* CORE FUNCTIONS *********************
@@ -222,11 +185,6 @@ int main(void) {
         // Handle list command
         case LIST_MSG:
 
-#ifdef CRYPTO_EXAMPLE
-            // Run the crypto example
-            // TODO: Remove this from your design
-            crypto_example();
-#endif // CRYPTO_EXAMPLE
 
             STATUS_LED_OFF();
             list(pkt_len, uart_buf);
@@ -262,6 +220,13 @@ int main(void) {
             listen(pkt_len, uart_buf);
             break;
 
+        /*
+         * These bring-up and diagnostic commands are deliberately absent
+         * from release firmware.  The eCTF host interface consists only of
+         * L/R/W/N/I/C; leaving extra handlers reachable expands the attack
+         * surface and can accidentally expose plaintext or key-derived data.
+         */
+#ifdef DEBUG_BUILD
         // Handle delete file command (opcode 'X')
         case DELETE_FILE_MSG:
             STATUS_LED_OFF();
@@ -280,11 +245,18 @@ int main(void) {
             boot_flag(pkt_len, uart_buf);
             break;
 
+        // Handle digest command (opcode 'H')
+        case DIGEST_MSG:
+            STATUS_LED_OFF();
+            digest(pkt_len, uart_buf);
+            break;
+
         // Test-only echo command (opcode 0xEE) — remove before production
         case ECHO_MSG:
             STATUS_LED_OFF();
             echo(pkt_len, uart_buf);
             break;
+#endif
 
         // Handle bad command
         default:

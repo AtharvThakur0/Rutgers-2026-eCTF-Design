@@ -38,6 +38,7 @@ typedef enum {
     DELETE_FILE_MSG = 'X',  // 'X' - 0x58 - delete encrypted blob
     CHANGE_PIN_MSG  = 'P',  // 'P' - 0x50 - change stored PIN
     BOOT_FLAG_MSG   = 'G',  // 'G' - 0x47 - return provisioned boot flag
+    DIGEST_MSG      = 'H',  // 'H' - 0x48 - return device_id + file digest
 } msg_type_t;
 
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
@@ -121,9 +122,19 @@ int read_packet_timeout(int uart_id, msg_type_t *cmd, void *buf, uint16_t *len,
 // Macro definitions to print the specified format for error messages
 #define print_error(msg) write_packet(CONTROL_INTERFACE, ERROR_MSG, msg, strlen(msg))
 
-// Macro definitions to print the specified format for debug messages
+/*
+ * Debug traffic is useful while bringing up UART and the bootloader, but it
+ * must never become a release-side information oracle.  Keep the call sites
+ * in place for diagnostics and compile them out unless the build explicitly
+ * opts in with -DDEBUG_BUILD.
+ */
+#ifdef DEBUG_BUILD
 #define print_debug(msg) write_packet(CONTROL_INTERFACE, DEBUG_MSG, msg, strlen(msg))
 #define print_hex_debug(msg, len) write_hex(CONTROL_INTERFACE, DEBUG_MSG, msg, len)
+#else
+#define print_debug(msg) ((void)0)
+#define print_hex_debug(msg, len) ((void)0)
+#endif
 
 // Macro definitions to write ack message
 #define write_ack(uart_id) write_packet(uart_id, ACK_MSG, NULL, 0)
