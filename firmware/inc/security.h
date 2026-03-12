@@ -71,6 +71,19 @@ bool check_pin(unsigned char *pin);
 int pin_change(const uint8_t *old_pin, size_t old_len,
                const uint8_t *new_pin, size_t new_len);
 
+/**
+ * @brief Compute HMAC-SHA-256(K_pin, pin_bytes) into out_hash[32].
+ *
+ * Used by command handlers that need to bind an encrypted blob to the
+ * current PIN without exposing the internal g_pin_hash buffer.
+ *
+ * @param pin     PIN bytes.
+ * @param pin_len Length of pin (PIN_LENGTH ≤ len ≤ PIN_MAX_LEN).
+ * @param out_hash Output buffer, must be 32 bytes.
+ * @return true on success.
+ */
+bool get_pin_hash(const uint8_t *pin, size_t pin_len, uint8_t out_hash[32]);
+
 /** @brief Ensure the HSM has the requested permission
  *
  *  @param group_id Group ID.

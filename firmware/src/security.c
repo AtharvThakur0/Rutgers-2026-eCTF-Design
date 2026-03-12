@@ -273,15 +273,29 @@ bool get_pin_hash(const uint8_t *pin, size_t pin_len, uint8_t out_hash[32]) {
 }
 
 bool validate_permission(uint16_t group_id, permission_enum_t perm) {
-  char output_buf[128] = {0};
+  /*
+   * Permissions are provisioned at build time in secrets.h.  Do not accept a
+   * host-supplied permission list: doing so would let an unauthenticated peer
+   * grant itself access to an arbitrary group.
+   */
+  for (size_t i = 0u; i < MAX_PERMS; ++i) {
+    const group_permission_t *entry = &global_permissions[i];
 
-  sprintf(output_buf, "Checking %c permissions for group: %hx\n", perm,
-          group_id);
-  print_debug(output_buf);
+    if (entry->group_id != group_id) {
+      continue;
+    }
 
-  // TODO: the reference design doesn't implement *ANY* security.
-  // This function currently does nothing. Your team should add the
-  // appropriate security checks here to implement the security
-  // requirements.
-  return true;
+    switch (perm) {
+    case PERM_READ:
+      return entry->read;
+    case PERM_WRITE:
+      return entry->write;
+    case PERM_RECEIVE:
+      return entry->receive;
+    default:
+      return false;
+    }
+  }
+
+  return false;
 }
