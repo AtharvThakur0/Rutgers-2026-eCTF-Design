@@ -9,6 +9,13 @@
 #include "sha256_raw.h"
 #include "host_messaging.h"
 
+#ifdef DEBUG_BUILD
+#define DBG_PRINTF(...) do { char _d[128]; sprintf(_d, __VA_ARGS__); print_debug(_d); } while (0)
+#else
+#define DBG_PRINTF(...) ((void)0)
+#endif
+
+
 #ifdef HOST_TEST
 int flash_simple_erase_page(uint32_t address);
 void flash_simple_read(uint32_t address, void *buffer, uint32_t size);
@@ -151,7 +158,6 @@ static secure_blob_store_status_t erase_slot_pages(uint8_t slot)
     for (uint32_t offset = 0u;
          offset < (uint32_t)SECURE_BLOB_STORE_SLOT_SIZE;
          offset += (uint32_t)SECURE_BLOB_STORE_PAGE_SIZE) {
-        /* Service watchdog across multi-page flash operations */
         if (flash_simple_erase_page(base + offset) != 0) {
             return SECURE_BLOB_STORE_IO_ERROR;
         }
@@ -163,15 +169,13 @@ static secure_blob_store_status_t erase_slot_pages(uint8_t slot)
 static secure_blob_store_status_t commit_fat_entry(uint8_t slot,
                                                    const secure_blob_fat_entry_t *entry)
 {
-    char dbg[128];
     if (!slot_is_valid(slot) || !entry) {
         return SECURE_BLOB_STORE_INVALID_ARGUMENT;
     }
 
-    sprintf(dbg, "DBG cf: slot=%u addr=0x%lx rec=%lu pt=%lu\n",
-            (unsigned)slot, (unsigned long)entry->flash_addr,
-            (unsigned long)entry->record_len, (unsigned long)entry->plaintext_len);
-    print_debug(dbg);
+    DBG_PRINTF("DBG cf: slot=%u addr=0x%lx record=%u\n",
+               (unsigned)slot, (unsigned long)entry->flash_addr,
+               (unsigned)entry->length);
 
     memset(g_scratch_page, 0xFF, sizeof(g_scratch_page));
     memcpy(g_scratch_page, g_fat, sizeof(g_fat));
@@ -194,7 +198,6 @@ static secure_blob_store_status_t load_header(uint8_t slot,
                                               secure_blob_flash_header_t *header)
 {
     const secure_blob_fat_entry_t *entry;
-    char dbg[128];
 
     if (!slot_is_valid(slot) || !header) {
         return SECURE_BLOB_STORE_INVALID_ARGUMENT;
@@ -205,47 +208,36 @@ static secure_blob_store_status_t load_header(uint8_t slot,
         return SECURE_BLOB_STORE_NOT_FOUND;
     }
 
-    sprintf(dbg, "DBG lh: slot=%u fat_addr=0x%lx rec_len=%lu pt_len=%lu\n",
-            (unsigned)slot, (unsigned long)entry->flash_addr, 
-            (unsigned long)entry->record_len, (unsigned long)entry->plaintext_len);
-    print_debug(dbg);
-
-    /* Validate page boundary alignment */
-    if ((entry->flash_addr % FLASH_PAGE_SIZE) != 0u) {
-        print_debug("DBG lh: unaligned flash address\n");
-        return SECURE_BLOB_STORE_CORRUPT;
-    }
+    DBG_PRINTF("DBG lh: slot=%u fat_addr=0x%lx record_len=%u\n",
+               (unsigned)slot, (unsigned long)entry->flash_addr, 
+               (unsigned)entry->length);
 
     if (entry->flash_addr != blob_slot_base(slot) ||
-        entry->record_len < sizeof(*header) ||
-        entry->record_len > SECURE_BLOB_STORE_SLOT_SIZE ||
-        entry->plaintext_len > (SECURE_BLOB_STORE_SLOT_SIZE - sizeof(*header))) {
+        entry->length < sizeof(*header) ||
+        entry->length > SECURE_BLOB_STORE_SLOT_SIZE) {
         print_debug("DBG lh: FAT bounds check FAIL\n");
         return SECURE_BLOB_STORE_CORRUPT;
     }
 
     flash_simple_read(entry->flash_addr, header, (uint32_t)sizeof(*header));
 
-    sprintf(dbg, "DBG lh: hdr magic=0x%lx ver=%u h_slot=%u h_pt_len=%lu\n",
-            (unsigned long)header->magic, (unsigned)header->version,
-            (unsigned)header->slot, (unsigned long)header->plaintext_len);
-    print_debug(dbg);
+    DBG_PRINTF("DBG lh: hdr magic=0x%lx ver=%u h_slot=%u h_pt_len=%lu\n",
+               (unsigned long)header->magic, (unsigned)header->version,
+               (unsigned)header->slot, (unsigned long)header->plaintext_len);
 
     if (header->magic != SECURE_BLOB_MAGIC ||
         header->version != SECURE_BLOB_VERSION ||
         header->slot != slot ||
-        header->plaintext_len != entry->plaintext_len ||
-        entry->record_len != (sizeof(*header) + header->plaintext_len)) {
+        header->plaintext_len > (SECURE_BLOB_STORE_SLOT_SIZE - sizeof(*header)) ||
+        entry->length != (sizeof(*header) + header->plaintext_len)) {
         print_debug("DBG lh: header content FAIL\n");
         if (header->magic != SECURE_BLOB_MAGIC) print_debug("  - magic mismatch\n");
         if (header->version != SECURE_BLOB_VERSION) print_debug("  - version mismatch\n");
         if (header->slot != slot) print_debug("  - slot mismatch\n");
-        if (header->plaintext_len != entry->plaintext_len) print_debug("  - pt_len mismatch\n");
-        if (entry->record_len != (sizeof(*header) + header->plaintext_len)) {
-            sprintf(dbg, "  - record_len mismatch: rec=%lu vs exp=%lu\n",
-                    (unsigned long)entry->record_len, 
-                    (unsigned long)(sizeof(*header) + header->plaintext_len));
-            print_debug(dbg);
+        if (entry->length != (sizeof(*header) + header->plaintext_len)) {
+            DBG_PRINTF("  - record_len mismatch: record=%u vs exp=%lu\n",
+                       (unsigned)entry->length,
+                       (unsigned long)(sizeof(*header) + header->plaintext_len));
         }
         return SECURE_BLOB_STORE_CORRUPT;
     }
@@ -271,6 +263,7 @@ secure_blob_store_status_t blob_write(
     uint8_t slot,
     const uint8_t *data,
     size_t len,
+    const uint8_t uuid[16],
     const uint8_t owner_pin_hash[SECURE_BLOB_STORE_PIN_HASH_SIZE],
     uint32_t group_mask)
 {
@@ -286,11 +279,12 @@ secure_blob_store_status_t blob_write(
     uint8_t resolved_slot = 0u;
     uint32_t flash_addr;
 
-    if (!owner_pin_hash || (len > 0u && !data)) {
+    if (!uuid || !owner_pin_hash || (len > 0u && !data)) {
         return SECURE_BLOB_STORE_INVALID_ARGUMENT;
     }
     if (len > (SECURE_BLOB_TAGS_OFFSET - sizeof(header)) ||
-        len > (size_t)UINT32_MAX) {
+        len > (size_t)UINT32_MAX ||
+        (sizeof(header) + len) > (size_t)UINT16_MAX) {
         return SECURE_BLOB_STORE_INVALID_ARGUMENT;
     }
 
@@ -299,16 +293,14 @@ secure_blob_store_status_t blob_write(
         return rc;
     }
 
-    char _dbg[128];
-    sprintf(_dbg, "DBG bw: slot=%u len=%u\n", (unsigned)resolved_slot, (unsigned)len);
-    print_debug(_dbg);
+    DBG_PRINTF("DBG bw: slot=%u len=%u\n", (unsigned)resolved_slot, (unsigned)len);
 
     if (!security_get_root_secret(&root)) {
         print_debug("DBG bw: root_secret FAIL\n");
         return SECURE_BLOB_STORE_CRYPTO_ERROR;
     }
     if (!derive_file_key(&root, group_mask, master_key)) {
-        print_debug("DBG bw: derive_key FAIL\n");
+        print_debug("DBG bw: derive_file_key FAIL\n");
         memset(&root, 0, sizeof(root));
         return SECURE_BLOB_STORE_CRYPTO_ERROR;
     }
@@ -329,10 +321,9 @@ secure_blob_store_status_t blob_write(
     memcpy(header.owner_pin_hash, owner_pin_hash, sizeof(header.owner_pin_hash));
     build_aad(&header);
 
-    sprintf(_dbg, "DBG bw: writing hdr magic=0x%lx pt_len=%lu sz=%u\n",
-            (unsigned long)header.magic, (unsigned long)header.plaintext_len,
-            (unsigned)sizeof(header));
-    print_debug(_dbg);
+    DBG_PRINTF("DBG bw: writing hdr magic=0x%lx pt_len=%lu sz=%u\n",
+               (unsigned long)header.magic, (unsigned long)header.plaintext_len,
+               (unsigned)sizeof(header));
 
     rc = erase_slot_pages(resolved_slot);
     if (rc != SECURE_BLOB_STORE_OK) {
@@ -413,15 +404,13 @@ secure_blob_store_status_t blob_write(
         return SECURE_BLOB_STORE_IO_ERROR;
     }
 
+    memcpy(entry.uuid, uuid, sizeof(entry.uuid));
+    entry.length = (uint16_t)(sizeof(header) + len);
+    entry.padding = 0u;
     entry.flash_addr = flash_addr;
-    entry.record_len = (uint32_t)(sizeof(header) + len);
-    entry.plaintext_len = (uint32_t)len;
-    entry.reserved = 0u;
 
-    sprintf(_dbg, "DBG bw: entry pt_len=%lu rec_len=%lu len_var=%lu\n",
-            (unsigned long)entry.plaintext_len, (unsigned long)entry.record_len,
-            (unsigned long)len);
-    print_debug(_dbg);
+    DBG_PRINTF("DBG bw: entry record_len=%u plaintext_len=%lu\n",
+               (unsigned)entry.length, (unsigned long)len);
 
     print_debug("DBG bw: committing FAT\n");
     return commit_fat_entry(resolved_slot, &entry);

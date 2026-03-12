@@ -30,12 +30,21 @@ extern "C" {
 
 #define SECURE_BLOB_STORE_PIN_HASH_SIZE SECURE_CRYPTO_SHA256_DIGEST_SIZE
 
-typedef struct {
+/*
+ * This is the eCTF bootloader ABI.  It must remain exactly 24 bytes and
+ * begin at 0x3A000: the bootloader consumes these entries directly when it
+ * computes file digests.  Private blob metadata belongs in the record, not
+ * in this structure.
+ */
+typedef struct __attribute__((packed)) {
+    uint8_t uuid[16];
+    uint16_t length;
+    uint16_t padding;
     uint32_t flash_addr;
-    uint32_t record_len;
-    uint32_t plaintext_len;
-    uint32_t reserved;
 } secure_blob_fat_entry_t;
+
+_Static_assert(sizeof(secure_blob_fat_entry_t) == 24u,
+               "FAT entries must match the eCTF bootloader ABI");
 
 typedef enum {
     SECURE_BLOB_STORE_OK = 0,
@@ -57,6 +66,7 @@ secure_blob_store_status_t blob_store_init(void);
 secure_blob_store_status_t blob_write(uint8_t slot,
                                       const uint8_t *data,
                                       size_t len,
+                                      const uint8_t uuid[16],
                                       const uint8_t owner_pin_hash
                                           [SECURE_BLOB_STORE_PIN_HASH_SIZE],
                                       uint32_t group_mask);
