@@ -173,28 +173,15 @@ typedef union {
 
 /* Shared large buffer for read/interrogate/receive/listen paths. */
 static large_response_buf_t g_large_buf;
+static interrogate_proof_t g_interrogate_proof;
 
-static bool request_allows_receive_group(const receive_request_t *request,
-                                         uint16_t group_id) {
-  if (request == NULL)
-    return false;
-
-  for (size_t i = 0; i < MAX_PERMS; i++) {
-    if (request->permissions[i].receive &&
-        request->permissions[i].group_id == group_id) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static int store_received_blob(uint8_t slot, const file_t *file,
+static int store_received_blob(uint8_t slot, const uint8_t uuid[UUID_SIZE],
+                               const file_t *file,
                                const uint8_t *pin) {
   uint8_t pin_hash[SECURE_BLOB_STORE_PIN_HASH_SIZE];
   secure_blob_store_status_t rc;
 
-  if (file == NULL || pin == NULL) {
+  if (uuid == NULL || file == NULL || pin == NULL) {
     print_error("Transfer payload invalid\n");
     return -1;
   }
@@ -224,7 +211,7 @@ static int store_received_blob(uint8_t slot, const file_t *file,
    * zero-length GCM; blob_write tolerates (NULL, 0). */
   const uint8_t *contents_ptr =
       (file->contents_len == 0) ? NULL : file->contents;
-  rc = blob_write(slot, contents_ptr, file->contents_len, pin_hash,
+  rc = blob_write(slot, contents_ptr, file->contents_len, uuid, pin_hash,
                   (uint32_t)file->group_id);
   memset(pin_hash, 0, sizeof(pin_hash));
 
@@ -307,7 +294,7 @@ int write(uint16_t pkt_len, uint8_t *buf) {
       return -1;
     }
     /* Pass NULL contents and 0 length; blob_write tolerates this. */
-    rc = blob_write(cmd->slot, NULL, 0, dummy_pin_hash,
+    rc = blob_write(cmd->slot, NULL, 0, cmd->uuid, dummy_pin_hash,
                     (uint32_t)cmd->group_id);
     memset(dummy_pin_hash, 0, sizeof(dummy_pin_hash));
     if (rc != SECURE_BLOB_STORE_OK) {
@@ -337,7 +324,7 @@ int write(uint16_t pkt_len, uint8_t *buf) {
   print_debug("DBG: name entry saved\n");
 
   /* Encrypt and write the blob; group_id stored as the access mask. */
-  rc = blob_write(cmd->slot, cmd->contents, cmd->contents_len, pin_hash,
+  rc = blob_write(cmd->slot, cmd->contents, cmd->contents_len, cmd->uuid, pin_hash,
                   (uint32_t)cmd->group_id);
   memset(pin_hash, 0, sizeof(pin_hash));
 
@@ -633,6 +620,9 @@ int echo(uint16_t pkt_len, uint8_t *buf) {
 int receive(uint16_t pkt_len, uint8_t *buf) {
   receive_command_t *command = (receive_command_t *)buf;
   receive_request_t request;
+  receive_challenge_t challenge;
+  receive_proof_t proof;
+  secure_crypto_root_secret_t root;
   msg_type_t cmd;
   uint16_t len_recv_msg;
   int rc;
@@ -654,8 +644,11 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
   memset(&request, 0, sizeof(request));
 
   request.slot = command->read_slot;
-  memcpy(&request.permissions, &global_permissions,
-         sizeof(group_permission_t) * MAX_PERMS);
+  if (!security_generate_nonce((uint8_t *)&request.requester_nonce,
+                               sizeof(request.requester_nonce))) {
+    print_error("Nonce generation failed\n");
+    return -1;
+  }
 
   rc = write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, (void *)&request,
                     sizeof(receive_request_t));
@@ -664,8 +657,9 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     return -1;
   }
 
-  len_recv_msg = sizeof(g_large_buf.receive_resp);
-  rc = read_packet_timeout(TRANSFER_INTERFACE, &cmd, &g_large_buf.receive_resp,
+  memset(&challenge, 0, sizeof(challenge));
+  len_recv_msg = sizeof(challenge);
+  rc = read_packet_timeout(TRANSFER_INTERFACE, &cmd, &challenge,
                            &len_recv_msg, UART_XFER_TIMEOUT_MS);
   if (rc != MSG_OK) {
     print_error("No response from target HSM\n");
@@ -676,12 +670,64 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
     print_error("Could not import file\n");
     return -1;
   }
-  if (cmd != RECEIVE_MSG) {
+  if (cmd != RECEIVE_MSG || len_recv_msg != sizeof(challenge) ||
+      challenge.slot != request.slot ||
+      challenge.requester_nonce != request.requester_nonce) {
     print_error("Opcode mismatch\n");
     return -1;
   }
 
-  if (store_received_blob(write_slot, &g_large_buf.receive_resp.file, pin) != 0) {
+  if (!validate_permission(challenge.group_id, PERM_RECEIVE)) {
+    print_error("Invalid permission\n");
+    return -1;
+  }
+
+  memset(&proof, 0, sizeof(proof));
+  proof.slot = challenge.slot;
+  proof.group_id = challenge.group_id;
+  proof.requester_nonce = challenge.requester_nonce;
+  proof.target_nonce = challenge.target_nonce;
+  if (!security_get_root_secret(&root)) {
+    print_error("Crypto error\n");
+    return -1;
+  }
+  size_t proof_len = sizeof(proof.proof);
+  bool proof_ok = secure_crypto_receive_proof_sign(
+      &root, proof.group_id, (const uint8_t *)&challenge, sizeof(challenge),
+      proof.proof, &proof_len);
+  memset(&root, 0, sizeof(root));
+  if (!proof_ok || proof_len != sizeof(proof.proof)) {
+    memset(&proof, 0, sizeof(proof));
+    print_error("Crypto error\n");
+    return -1;
+  }
+
+  rc = write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &proof, sizeof(proof));
+  if (rc != MSG_OK) {
+    memset(&proof, 0, sizeof(proof));
+    print_error("No response from target HSM\n");
+    return -1;
+  }
+  memset(&proof, 0, sizeof(proof));
+
+  len_recv_msg = sizeof(g_large_buf.receive_resp);
+  rc = read_packet_timeout(TRANSFER_INTERFACE, &cmd, &g_large_buf.receive_resp,
+                           &len_recv_msg, UART_XFER_TIMEOUT_MS);
+  if (rc != MSG_OK) {
+    print_error("No response from target HSM\n");
+    return -1;
+  }
+  if (cmd == ERROR_MSG) {
+    print_error("Could not import file\n");
+    return -1;
+  }
+  if (cmd != RECEIVE_MSG || len_recv_msg != sizeof(g_large_buf.receive_resp)) {
+    print_error("Opcode mismatch\n");
+    return -1;
+  }
+
+  if (store_received_blob(write_slot, g_large_buf.receive_resp.uuid,
+                          &g_large_buf.receive_resp.file, pin) != 0) {
     return -1;
   }
 
@@ -694,8 +740,12 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
  * ========================================================================= */
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
   interrogate_command_t *command = (interrogate_command_t *)buf;
+  interrogate_request_t request;
+  interrogate_challenge_t challenge;
+  secure_crypto_root_secret_t root;
   msg_type_t cmd;
   uint16_t len_recv_msg;
+  uint8_t proof_message[sizeof(challenge) + sizeof(group_id_t)];
   int rc;
 
   if (pkt_len < (uint16_t)sizeof(interrogate_command_t)) {
@@ -709,22 +759,87 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
   /* Bug 3 fix: Use static scratch buffer to avoid stack overflow. */
   list_response_t *p_list = (list_response_t *)g_large_buf.read_buf;
 
-  /* Tell the other HSM to send its list. */
-  rc = write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, NULL, 0);
+  memset(&request, 0, sizeof(request));
+  if (!security_generate_nonce((uint8_t *)&request.requester_nonce,
+                               sizeof(request.requester_nonce))) {
+    print_error("Nonce generation failed\n");
+    return -1;
+  }
+
+  /* Request a fresh challenge before disclosing which groups this device can
+   * receive.  A captured proof cannot be replayed against a new challenge. */
+  rc = write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &request,
+                    sizeof(request));
   if (rc != MSG_OK) {
     print_error("No response from target HSM\n");
     return -1;
   }
 
-  /* Read the response from the other HSM. */
+  memset(&challenge, 0, sizeof(challenge));
+  len_recv_msg = sizeof(challenge);
+  if (read_packet_timeout(TRANSFER_INTERFACE, &cmd, &challenge, &len_recv_msg,
+                          UART_XFER_TIMEOUT_MS) != MSG_OK) {
+    print_error("No response from target HSM\n");
+    return -1;
+  }
+
+  if (cmd != INTERROGATE_MSG || len_recv_msg != sizeof(challenge) ||
+      challenge.requester_nonce != request.requester_nonce) {
+    print_error("Opcode mismatch\n");
+    return -1;
+  }
+
+  memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
+  g_interrogate_proof.requester_nonce = challenge.requester_nonce;
+  g_interrogate_proof.target_nonce = challenge.target_nonce;
+  if (!security_get_root_secret(&root)) {
+    print_error("Crypto error\n");
+    return -1;
+  }
+  for (size_t i = 0u; i < MAX_PERMS; ++i) {
+    size_t sig_len;
+    if (!global_permissions[i].receive) {
+      continue;
+    }
+    if (g_interrogate_proof.proof_count >= MAX_PERMS) {
+      break;
+    }
+    interrogate_group_proof_t *entry =
+        &g_interrogate_proof.proofs[g_interrogate_proof.proof_count];
+    entry->group_id = global_permissions[i].group_id;
+    memcpy(proof_message, &challenge, sizeof(challenge));
+    memcpy(proof_message + sizeof(challenge), &entry->group_id,
+           sizeof(entry->group_id));
+    sig_len = sizeof(entry->proof);
+    if (!secure_crypto_receive_proof_sign(
+            &root, entry->group_id, proof_message, sizeof(proof_message),
+            entry->proof, &sig_len) || sig_len != sizeof(entry->proof)) {
+      memset(&root, 0, sizeof(root));
+      memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
+      print_error("Crypto error\n");
+      return -1;
+    }
+    g_interrogate_proof.proof_count++;
+  }
+  memset(&root, 0, sizeof(root));
+  memset(proof_message, 0, sizeof(proof_message));
+
+  if (write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG,
+                   &g_interrogate_proof, sizeof(g_interrogate_proof)) != MSG_OK) {
+    memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
+    print_error("No response from target HSM\n");
+    return -1;
+  }
+  memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
+
+  /* Read the filtered metadata response from the other HSM. */
   len_recv_msg = sizeof(list_response_t);
   if (read_packet_timeout(TRANSFER_INTERFACE, &cmd, p_list, &len_recv_msg,
                           UART_XFER_TIMEOUT_MS) != MSG_OK) {
     print_error("No response from target HSM\n");
     return -1;
   }
-
-  if (cmd != INTERROGATE_MSG) {
+  if (cmd != INTERROGATE_MSG || len_recv_msg > sizeof(list_response_t)) {
     print_error("Opcode mismatch\n");
     return -1;
   }
@@ -737,12 +852,20 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
  * LISTEN  (opcode 'N')
  * ========================================================================= */
 int listen(uint16_t pkt_len, uint8_t *buf) {
-  uint8_t uart_buf[sizeof(receive_request_t)];
+  uint8_t uart_buf[sizeof(interrogate_proof_t)];
   msg_type_t cmd;
   pkt_len_t write_length, read_length;
   list_response_t file_list;
   receive_request_t *command;
+  receive_challenge_t challenge;
+  receive_proof_t proof;
+  interrogate_request_t interrogate_request;
+  interrogate_challenge_t interrogate_challenge;
+  uint8_t interrogate_proof_message[sizeof(interrogate_challenge) + sizeof(group_id_t)];
+  bool group_authorized[MAX_PERMS];
+  secure_crypto_root_secret_t root;
   size_t plaintext_len;
+  bool proof_valid;
   int rc;
 
   read_length = sizeof(uart_buf);
@@ -757,9 +880,78 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
   switch (cmd) {
   case INTERROGATE_MSG:
+    if (read_length != sizeof(interrogate_request_t)) {
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Interrogate denied", 18);
+      return -1;
+    }
+    memcpy(&interrogate_request, uart_buf, sizeof(interrogate_request));
+    memset(&interrogate_challenge, 0, sizeof(interrogate_challenge));
+    interrogate_challenge.requester_nonce = interrogate_request.requester_nonce;
+    if (!security_generate_nonce((uint8_t *)&interrogate_challenge.target_nonce,
+                                 sizeof(interrogate_challenge.target_nonce))) {
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Interrogate denied", 18);
+      return -1;
+    }
+    if (write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &interrogate_challenge,
+                     sizeof(interrogate_challenge)) != MSG_OK) {
+      return -1;
+    }
+    read_length = sizeof(g_interrogate_proof);
+    if (read_packet_timeout(TRANSFER_INTERFACE, &cmd, &g_interrogate_proof,
+                            &read_length, UART_XFER_TIMEOUT_MS) != MSG_OK ||
+        cmd != INTERROGATE_MSG || read_length != sizeof(g_interrogate_proof) ||
+        g_interrogate_proof.proof_count > MAX_PERMS ||
+        g_interrogate_proof.requester_nonce != interrogate_challenge.requester_nonce ||
+        g_interrogate_proof.target_nonce != interrogate_challenge.target_nonce ||
+        !security_get_root_secret(&root)) {
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Interrogate denied", 18);
+      return -1;
+    }
+    memset(group_authorized, 0, sizeof(group_authorized));
+    for (size_t i = 0u; i < g_interrogate_proof.proof_count; ++i) {
+      const interrogate_group_proof_t *entry = &g_interrogate_proof.proofs[i];
+      memcpy(interrogate_proof_message, &interrogate_challenge,
+             sizeof(interrogate_challenge));
+      memcpy(interrogate_proof_message + sizeof(interrogate_challenge),
+             &entry->group_id, sizeof(entry->group_id));
+      if (!secure_crypto_receive_proof_verify(
+              &root, entry->group_id, interrogate_proof_message,
+              sizeof(interrogate_proof_message), entry->proof,
+              sizeof(entry->proof))) {
+        memset(&root, 0, sizeof(root));
+        memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
+        write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Interrogate denied", 18);
+        return -1;
+      }
+      group_authorized[i] = true;
+    }
+    memset(&root, 0, sizeof(root));
+    memset(interrogate_proof_message, 0, sizeof(interrogate_proof_message));
+    if (!security_secure_uart_check_and_update_replay(
+            interrogate_challenge.requester_nonce,
+            interrogate_challenge.target_nonce, 0u, INTERROGATE_MSG)) {
+      memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Interrogate denied", 18);
+      return -1;
+    }
+
     memset(&file_list, 0, sizeof(file_list));
-    generate_list_files(&file_list);
-    /* TODO: add inter-HSM authentication (SR1) */
+    for (uint8_t slot = 0u; slot < SECURE_BLOB_STORE_MAX_SLOTS; ++slot) {
+      if (!slot_occupied(slot) || file_list.n_files >= MAX_FILE_COUNT) {
+        continue;
+      }
+      for (size_t i = 0u; i < g_interrogate_proof.proof_count; ++i) {
+        if (group_authorized[i] &&
+            g_interrogate_proof.proofs[i].group_id == g_name_table[slot].group_id) {
+          file_metadata_t *metadata = &file_list.metadata[file_list.n_files++];
+          metadata->slot = slot;
+          metadata->group_id = g_name_table[slot].group_id;
+          memcpy(metadata->name, g_name_table[slot].name, MAX_NAME_SIZE);
+          break;
+        }
+      }
+    }
+    memset(&g_interrogate_proof, 0, sizeof(g_interrogate_proof));
     write_length = LIST_PKT_LEN(file_list.n_files);
     if (write_packet(TRANSFER_INTERFACE, INTERROGATE_MSG, &file_list,
                      write_length) != MSG_OK) {
@@ -770,22 +962,60 @@ int listen(uint16_t pkt_len, uint8_t *buf) {
 
   case RECEIVE_MSG:
     command = (receive_request_t *)uart_buf;
-    /* TODO: add inter-HSM authentication (SR1) */
+    if (read_length != sizeof(*command)) {
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Could not import file", 21);
+      return -1;
+    }
     if (!slot_occupied(command->slot)) {
       write_packet(TRANSFER_INTERFACE, ERROR_MSG,
                    "Could not import file", 21);
       print_error("File not found\n");
       return -1;
     }
-    if (!request_allows_receive_group(command,
-                                      g_name_table[command->slot].group_id)) {
+    memset(&challenge, 0, sizeof(challenge));
+    challenge.slot = command->slot;
+    challenge.group_id = g_name_table[command->slot].group_id;
+    challenge.requester_nonce = command->requester_nonce;
+    if (!security_generate_nonce((uint8_t *)&challenge.target_nonce,
+                                 sizeof(challenge.target_nonce))) {
       write_packet(TRANSFER_INTERFACE, ERROR_MSG,
                    "Could not import file", 21);
-      print_error("Receive not authorized\n");
       return -1;
     }
 
+    if (write_packet(TRANSFER_INTERFACE, RECEIVE_MSG, &challenge,
+                     sizeof(challenge)) != MSG_OK) {
+      print_error("Transfer write failed\n");
+      return -1;
+    }
+
+    read_length = sizeof(proof);
+    if (read_packet_timeout(TRANSFER_INTERFACE, &cmd, &proof, &read_length,
+                            UART_XFER_TIMEOUT_MS) != MSG_OK ||
+        cmd != RECEIVE_MSG || read_length != sizeof(proof) ||
+        proof.slot != challenge.slot || proof.group_id != challenge.group_id ||
+        proof.requester_nonce != challenge.requester_nonce ||
+        proof.target_nonce != challenge.target_nonce) {
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Could not import file", 21);
+      return -1;
+    }
+    proof_valid = security_get_root_secret(&root) &&
+                  secure_crypto_receive_proof_verify(
+                      &root, proof.group_id, (const uint8_t *)&challenge,
+                      sizeof(challenge), proof.proof, sizeof(proof.proof));
+    memset(&root, 0, sizeof(root));
+    if (!proof_valid || !security_secure_uart_check_and_update_replay(
+                            proof.requester_nonce, proof.target_nonce,
+                            proof.group_id, RECEIVE_MSG)) {
+      memset(&proof, 0, sizeof(proof));
+      write_packet(TRANSFER_INTERFACE, ERROR_MSG, "Could not import file", 21);
+      return -1;
+    }
+    memset(&proof, 0, sizeof(proof));
+
     memset(&g_large_buf.receive_resp, 0, sizeof(g_large_buf.receive_resp));
+    memcpy(g_large_buf.receive_resp.uuid, g_fat[command->slot].uuid,
+           UUID_SIZE);
     g_large_buf.receive_resp.file.in_use = FILE_IN_USE;
     g_large_buf.receive_resp.file.group_id = g_name_table[command->slot].group_id;
     memcpy(g_large_buf.receive_resp.file.name, g_name_table[command->slot].name,
