@@ -1,10 +1,26 @@
 ## Project .gitignore ##
 
 .DS_Store
+.venv/
+global.secrets
+build/
+tests/logs/
+CMakeLists.txt
+CMakePresets.json
 .vscode/
 **/gcc
-
+.clangd
+tests/
+scripts/
 !device/lib
+./test_echo.py
+./TESTS.md
+./readback/
+./one_board_matrix.sh
+commands.sh
+.checkpoint_artifacts/
+run_tests.sh
+test_results.md
 
 ## Begin Generic .gitignore ##
 
@@ -337,4 +353,5 @@ wolfssl/
 *.secrets
 *.secrets.txt
 **/secrets.h
+**/secrets.c
 uv.lock
