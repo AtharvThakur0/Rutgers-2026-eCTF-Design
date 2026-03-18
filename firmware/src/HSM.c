@@ -155,10 +155,6 @@ int main(void) {
             crypto_example();
 #endif // CRYPTO_EXAMPLE
 
-            // Print the boot flag
-            // TODO: Remove this from your design
-            boot_flag();
-
             STATUS_LED_OFF();
             list(pkt_len, uart_buf);
             break;

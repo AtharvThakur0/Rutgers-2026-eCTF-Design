@@ -43,6 +43,7 @@ int init_fs() {
 */
 bool is_slot_in_use(slot_t slot) {
     file_t temp_file;
+    memset(&temp_file, 0, sizeof(temp_file));
     return (!read_file(slot, &temp_file) && temp_file.in_use == FILE_IN_USE);
 }
 
@@ -112,9 +113,19 @@ int read_file(slot_t slot, file_t *dest) {
 
     flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
     file_size = FILE_ALLOCATION_TABLE[slot].length;
-    if (flash_addr < 0 || file_size < 0) {
+
+    /* Reject clearly uninitialized or invalid FAT entries:
+     *   - flash_addr < 0        : 0xFFFFFFFF from erased (all-ones) flash
+     *   - flash_addr < FILES_START_ADDR : catches 0 and any address below
+     *                             the file storage region (e.g., program flash)
+     *   - file_size <= 0        : nothing to read; also prevents a 0-byte
+     *                             read that leaves dest uninitialized */
+    if (flash_addr < 0 ||
+        (unsigned int)flash_addr < FILES_START_ADDR ||
+        file_size <= 0) {
         return -1;
     }
+
     flash_simple_read(flash_addr, dest, file_size);
 
     return 0;
