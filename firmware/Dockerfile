@@ -8,17 +8,48 @@ LABEL version="0.2"
 LABEL description="Example HSM Docker Container for the 2026 eCTF"
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG UBUNTU_PORTS_MIRROR=http://mirror.fmt-2.serverforge.org/ubuntu-ports
 WORKDIR /root
 
-# Install Requisite Packages
-# do this first because it takes the longest
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
-    libsodium-dev \
-    python3 \
-    make \
-    wget \
-    build-essential \
-    unzip
+# Install Requisite Packages.
+# Ubuntu mirrors occasionally serve mismatched package indexes during sync; clear
+# the apt caches and retry the full update/install transaction instead of
+# reusing the same bad metadata.
+RUN set -eux; \
+    sed -Ei "s|https?://ports\\.ubuntu\\.com/ubuntu-ports|${UBUNTU_PORTS_MIRROR}|g" /etc/apt/sources.list.d/ubuntu.sources; \
+    for attempt in 1 2 3 4 5; do \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /var/cache/apt/archives/partial/*; \
+        if apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::BrokenProxy=true \
+            -o Acquire::http::No-Cache=true \
+            -o Acquire::http::Pipeline-Depth=0 \
+            -o Acquire::https::No-Cache=true \
+            update \
+            && apt-get \
+                -o Acquire::Retries=3 \
+                -o Acquire::BrokenProxy=true \
+                -o Acquire::http::No-Cache=true \
+                -o Acquire::http::Pipeline-Depth=0 \
+                -o Acquire::https::No-Cache=true \
+                install -y --no-install-recommends \
+                python3 \
+                make \
+                wget \
+                ca-certificates \
+                build-essential \
+                unzip; then \
+            rm -rf /var/lib/apt/lists/*; \
+            break; \
+        fi; \
+        if [ "$attempt" -eq 5 ]; then \
+            echo "apt install failed after ${attempt} attempts" >&2; \
+            exit 1; \
+        fi; \
+        sleep 5; \
+    done
+
 
 ENV MSPM0_SDK_INSTALL_DIR=/opt/mspm0-sdk-mspm0_sdk_2_06_00_05
 ENV TICLANG_ARMCOMPILER=/opt/ti-cgt-armllvm_4.0.3.LTS
@@ -43,4 +74,3 @@ RUN if [ $(uname -m) = "x86_64" ]; then \
 WORKDIR /hsm
 
 ENTRYPOINT ["bash", "/hsm/build.sh"]
-
