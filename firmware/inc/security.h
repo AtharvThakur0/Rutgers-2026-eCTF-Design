@@ -15,9 +15,11 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
-#define MAX_PERMS 8
+#define MAX_PERMS  8
 #define PIN_LENGTH 6
+#define PIN_MAX_LEN 20
 
 typedef enum {
     PERM_READ = 'R',
@@ -32,13 +34,42 @@ typedef struct {
     bool receive;
 } group_permission_t;
 
-/** @brief Validate a pin against the HSM's pin
+/**
+ * @brief Load pin_hash and fail_count from flash.  Provisions the initial
+ *        hash from HSM_PIN (secrets.h) if the page is blank (first boot).
+ *        Must be called once from init() before any check_pin() call.
  *
- *  @param pin Requested pin to validate.
+ * @return 0 on success, -1 on error.
+ */
+int pin_init(void);
+
+/** @brief Return true if the HSM is permanently locked (≥5 failed attempts). */
+bool pin_is_locked(void);
+
+/** @brief Validate a pin against the HSM's pin.
  *
- *  @return True if the pin is valid. False if not.
-*/
+ *  Constant-time comparison.  Increments the failure counter and runs a
+ *  mandatory fail_delay() on every wrong attempt.  Returns false immediately
+ *  (no delay) when pin_is_locked() is already true.
+ *
+ *  @param pin Pointer to PIN_LENGTH bytes from the command packet.
+ *  @return True if the pin is correct and the HSM is not locked.
+ */
 bool check_pin(unsigned char *pin);
+
+/**
+ * @brief Change the stored PIN.  Verifies old_pin first (constant-time).
+ *        Increments the failure counter (with delay) on a wrong old_pin.
+ *        Resets the counter and writes the new hash on success.
+ *
+ * @param old_pin  Current PIN bytes.
+ * @param old_len  Length of old_pin (PIN_LENGTH ≤ len ≤ PIN_MAX_LEN).
+ * @param new_pin  New PIN bytes.
+ * @param new_len  Length of new_pin (PIN_LENGTH ≤ len ≤ PIN_MAX_LEN).
+ * @return 0 on success, -1 on failure.
+ */
+int pin_change(const uint8_t *old_pin, size_t old_len,
+               const uint8_t *new_pin, size_t new_len);
 
 /** @brief Ensure the HSM has the requested permission
  *

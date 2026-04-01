@@ -4,8 +4,13 @@
 .vscode/
 **/gcc
 .clangd
-
+tests/
+scripts/
 !device/lib
+./test_echo.py
+./TESTS.md
+./readback/
+./one_board_matrix.sh
 
 ## Begin Generic .gitignore ##
 

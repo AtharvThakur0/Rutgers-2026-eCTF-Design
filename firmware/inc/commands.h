@@ -159,4 +159,14 @@ int interrogate(uint16_t pkt_len, uint8_t *buf);
 */
 int listen(uint16_t pkt_len, uint8_t *buf);
 
+
+/** @brief Echo the payload back to the host (test-only, opcode 0xEE).
+ *
+ *  @param pkt_len The length of the incoming payload.
+ *  @param buf     A pointer to the incoming message buffer.
+ *
+ * @return 0 upon success. A negative value on error.
+*/
+int echo(uint16_t pkt_len, uint8_t *buf);
+
 #endif // __COMMANDS_H__

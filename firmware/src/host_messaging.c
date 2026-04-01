@@ -114,9 +114,9 @@ int write_packet(int uart_id, msg_type_t type, const void *buf, uint16_t len)
     }
 
     /* The host ACKs every chunk (header + each 256-byte body block) for all
-     * opcodes EXCEPT ACK and DEBUG ("NACK_MSGS" in hsm_interface.py).
+     * opcodes EXCEPT ACK, DEBUG, and ERROR ("NACK_MSGS" in hsm_interface.py).
      * Await the header ACK before sending the body. */
-    bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG);
+    bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG && type != ERROR_MSG);
 
     if (needs_ack) {
         if (await_ack(uart_id) != MSG_OK) return MSG_NO_ACK;
@@ -209,7 +209,7 @@ int write_hex(int uart_id, msg_type_t type, const void *buf, size_t len)
         uart_writebyte(uart_id, hp[i]);
     }
 
-    bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG);
+    bool needs_ack = (type != ACK_MSG && type != DEBUG_MSG && type != ERROR_MSG);
 
     if (needs_ack) {
         if (await_ack(uart_id) != MSG_OK) return MSG_NO_ACK;

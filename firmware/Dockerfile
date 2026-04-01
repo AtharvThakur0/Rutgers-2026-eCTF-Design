@@ -50,6 +50,10 @@ RUN set -eux; \
         sleep 5; \
     done
 
+RUN wget -q https://github.com/wolfSSL/wolfssl/archive/refs/tags/v5.7.6-stable.tar.gz && \
+    tar -xzf v5.7.6-stable.tar.gz && \
+    mv wolfssl-5.7.6-stable /opt/wolfssl && \
+    rm -f v5.7.6-stable.tar.gz
 
 ENV MSPM0_SDK_INSTALL_DIR=/opt/mspm0-sdk-mspm0_sdk_2_06_00_05
 ENV TICLANG_ARMCOMPILER=/opt/ti-cgt-armllvm_4.0.3.LTS

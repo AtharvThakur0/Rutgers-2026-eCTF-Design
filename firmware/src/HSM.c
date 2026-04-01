@@ -21,9 +21,11 @@
 #include "host_messaging.h"
 #include "commands.h"
 #include "filesystem.h"
+#include "security.h"
 #include "ti_msp_dl_config.h"
 #include "status_led.h"
 #include "simple_uart.h"
+#include "trng.h"
 
 /* Code between this #ifdef and the subsequent #endif will
 *  be ignored by the compiler if CRYPTO_EXAMPLE is not set in
@@ -98,7 +100,16 @@ void init() {
     // Initialize all of the hardware components
     SYSCFG_DL_init();
 
+    // Initialize the hardware TRNG (must follow SYSCFG_DL_init so clocks are up)
+    trng_init();
+
     init_fs();
+
+    // Load pin_hash and fail_count from flash.  On first boot after reflash
+    // this provisions the initial hash from HSM_PIN (secrets.h).
+    if (pin_init() != 0) {
+        print_error("PIN init failed\n");
+    }
 }
 
 /**********************************************************
@@ -113,6 +124,28 @@ int main(void) {
 
     // initialize the device
     init();
+
+    // TRNG startup self-test: two independent 8-byte samples must be
+    // non-zero and must differ from each other.
+    uint8_t rng_a[8], rng_b[8];
+    trng_read_bytes(rng_a, sizeof(rng_a));
+    trng_read_bytes(rng_b, sizeof(rng_b));
+
+    bool rng_a_nonzero = false;
+    for (int i = 0; i < 8; i++) {
+        if (rng_a[i] != 0) { rng_a_nonzero = true; break; }
+    }
+    bool rng_different = (memcmp(rng_a, rng_b, sizeof(rng_a)) != 0);
+
+    if (rng_a_nonzero && rng_different) {
+        print_debug("TRNG OK\n");
+        print_hex_debug(rng_a, sizeof(rng_a));
+        print_hex_debug(rng_b, sizeof(rng_b));
+    } else {
+        print_error("TRNG FAIL\n");
+    }
+
+    print_debug("BOOT OK\n");
 
     // process commands forever
     while (1) {
@@ -187,6 +220,12 @@ int main(void) {
         case LISTEN_MSG:
             STATUS_LED_OFF();
             listen(pkt_len, uart_buf);
+            break;
+
+        // Test-only echo command (opcode 0xEE) — remove before production
+        case ECHO_MSG:
+            STATUS_LED_OFF();
+            echo(pkt_len, uart_buf);
             break;
 
         // Handle bad command

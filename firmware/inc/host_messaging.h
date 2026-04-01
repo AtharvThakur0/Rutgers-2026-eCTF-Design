@@ -34,6 +34,7 @@ typedef enum {
     ACK_MSG = 'A',          // 'A' - 0x41
     DEBUG_MSG = 'D',        // 'D' - 0x44
     ERROR_MSG = 'E',        // 'E' - 0x45
+    ECHO_MSG = 0xEE,        // 0xEE - test echo (not a final command)
 } msg_type_t;
 
 #pragma pack(push, 1) // Tells the compiler not to pad the struct members
