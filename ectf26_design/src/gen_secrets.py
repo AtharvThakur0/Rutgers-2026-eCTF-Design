@@ -19,7 +19,6 @@ from pathlib import Path
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization 
-from loguru import logger
 
 
 def gen_secrets(groups: list[int]) -> bytes:
@@ -65,7 +64,7 @@ def gen_secrets(groups: list[int]) -> bytes:
     group_list= [] 
 
     for group in groups:
-        group_list.append(struct.pack('>h', group))
+        group_list.append(struct.pack('>H', group))
 
     group_bytes = b"".join(group_list)
 
