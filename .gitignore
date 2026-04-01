@@ -11,6 +11,7 @@ scripts/
 ./TESTS.md
 ./readback/
 ./one_board_matrix.sh
+commands.sh
 
 ## Begin Generic .gitignore ##
 
@@ -343,4 +344,5 @@ wolfssl/
 *.secrets
 *.secrets.txt
 **/secrets.h
+**/secrets.c
 uv.lock
