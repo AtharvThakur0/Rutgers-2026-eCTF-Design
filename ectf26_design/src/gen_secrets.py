@@ -56,9 +56,11 @@ def gen_secrets(groups: list[int]) -> bytes:
 
     aes_key = secrets.token_bytes(32)
 
-    # binary concatentaion, split point for ECC256 is at 65
-    # 0-64: serialized_public 65-97: aes_key
-    # group id is 32 bits 
+    # Binary layout (must match secure_crypto_root_secret_from_global_secrets):
+    #   [  0 ..  64]  ECC public key  (65 bytes, X962 uncompressed)
+    #   [ 65 ..  96]  ECC private key (32 bytes, big-endian scalar)
+    #   [ 97 .. 128]  K_master        (32 bytes, random AES key)
+    #   [129 ..    ]  group list      (2 bytes big-endian per group ID)
 
     # groups to bytes
     group_list= [] 

@@ -96,17 +96,24 @@ def secrets_to_c_header(
         f.write('#include "security.h"\n\n')
         f.write('#include <stdint.h> \n\n')
 
-        f.write(f'#define HSM_PIN "{hsm_pin}"\n\n')
-        f.write(f'#define GLOBAL_SECRETS_LEN {len(secrets)}\n')
+        f.write("#ifndef HSM_PIN\n")
+        f.write(f'#define HSM_PIN "{hsm_pin}"\n')
+        f.write("#endif\n\n")
+        f.write(f"#ifndef GLOBAL_SECRETS_LEN\n")
+        f.write(f"#define GLOBAL_SECRETS_LEN {len(secrets)}\n")
+        f.write(f"#endif\n")
         f.write("extern const uint8_t GLOBAL_SECRETS[GLOBAL_SECRETS_LEN];\n\n")
 
-        f.write("const static group_permission_t global_permissions[MAX_PERMS] = {\n")
+        f.write("#ifndef GLOBAL_PERMISSIONS_INIT\n")
+        f.write("#define GLOBAL_PERMISSIONS_INIT \\\n")
+        f.write("    { \\\n")
         for i, perm in enumerate(permissions):
-            f.write(
-                (f"\t{{{hex(perm.group_id)}, {str(perm.read).lower()}, "
-                    f"{str(perm.write).lower()}, {str(perm.receive).lower()}}},\n")
-            )
-        f.write("};\n")
+            comma = ", \\" if i < len(permissions) - 1 else " \\"
+            f.write(f"        {{{hex(perm.group_id)}, {str(perm.read).lower()}, "
+                    f"{str(perm.write).lower()}, {str(perm.receive).lower()}}}{comma}\n")
+        f.write("    }\n")
+        f.write("#endif\n\n")
+        f.write("static const group_permission_t global_permissions[MAX_PERMS] = GLOBAL_PERMISSIONS_INIT;\n")
         f.write("\n#endif  // __SECRETS_H__\n")
 
     # Write the single definition of GLOBAL_SECRETS into secrets.c
