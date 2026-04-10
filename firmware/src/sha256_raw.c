@@ -12,9 +12,7 @@
 #include "sha256_raw.h"
 #include <string.h>
 
-/* =========================================================================
- * SHA-256 constants and helpers
- * ========================================================================= */
+
 
 #define ROTR32(x, n) (((uint32_t)(x) >> (n)) | ((uint32_t)(x) << (32u - (n))))
 
@@ -28,13 +26,13 @@ static sha256_raw_ctx_t g_hmac_keyhash_ctx;
 static hmac_sha256_raw_ctx_t g_hmac_oneshot_ctx;
 static hmac_sha256_raw_ctx_t g_hkdf_ctx;
 
-/* Initial hash values (FIPS 180-4 §5.3.3) */
+/* Initial hash values (FIPS 180-4 Section 5.3.3) */
 static const uint32_t sha256_H0[8] = {
     0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
     0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u,
 };
 
-/* Round constants (FIPS 180-4 §4.2.2) */
+/* Round constants (FIPS 180-4 Section 4.2.2) */
 static const uint32_t sha256_K[64] = {
     0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,
     0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
@@ -60,9 +58,7 @@ static uint32_t be32_load(const uint8_t *b) {
            ((uint32_t)b[2] <<  8) | ((uint32_t)b[3]);
 }
 
-/* =========================================================================
- * SHA-256 block compression (processes one 64-byte block)
- * ========================================================================= */
+/* SHA-256 block compression (processes one 64-byte block) */
 
 static void sha256_compress(sha256_raw_ctx_t *ctx, const uint8_t *block) {
     uint32_t *W = g_sha256_schedule;
@@ -101,9 +97,7 @@ static void sha256_compress(sha256_raw_ctx_t *ctx, const uint8_t *block) {
     memset(W, 0, sizeof(g_sha256_schedule));
 }
 
-/* =========================================================================
- * SHA-256 streaming API
- * ========================================================================= */
+
 
 void sha256_raw_ctx_init(sha256_raw_ctx_t *ctx) {
     int i;
@@ -183,9 +177,7 @@ void sha256_raw_ctx_final(sha256_raw_ctx_t *ctx, uint8_t digest[SHA256_RAW_DIGES
     memset(ctx, 0, sizeof(*ctx));
 }
 
-/* =========================================================================
- * HMAC-SHA-256 streaming API
- * ========================================================================= */
+
 
 void hmac_sha256_raw_init(hmac_sha256_raw_ctx_t *ctx,
                           const uint8_t *key, size_t key_len) {
@@ -239,9 +231,7 @@ void hmac_sha256_raw_final(hmac_sha256_raw_ctx_t *ctx,
     memset(ctx, 0, sizeof(*ctx));
 }
 
-/* =========================================================================
- * One-shot helpers
- * ========================================================================= */
+
 
 void sha256_raw(const uint8_t *msg, size_t len,
                 uint8_t digest[SHA256_RAW_DIGEST_SIZE]) {
@@ -260,14 +250,12 @@ void hmac_sha256_raw(const uint8_t *key, size_t key_len,
     memset(&g_hmac_oneshot_ctx, 0, sizeof(g_hmac_oneshot_ctx));
 }
 
-/* =========================================================================
- * HKDF (RFC 5869)
- * ========================================================================= */
+/* HKDF (RFC 5869) */
 
 void hkdf_extract_sha256(const uint8_t *salt, size_t salt_len,
                           const uint8_t *ikm,  size_t ikm_len,
                           uint8_t prk[SHA256_RAW_DIGEST_SIZE]) {
-    /* If salt is absent, use a string of HashLen zeros per RFC 5869 §2.2 */
+    /* If salt is absent, use a string of HashLen zeros per RFC 5869 Section 2.2 */
     static const uint8_t zero_salt[SHA256_RAW_DIGEST_SIZE] = {0};
     if (salt == NULL || salt_len == 0u) {
         salt     = zero_salt;

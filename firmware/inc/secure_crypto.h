@@ -5,11 +5,11 @@
  *
  * All SHA-256 and HMAC operations use sha256_raw.h (no dynamic allocation).
  * wolfSSL is used only for AES-256-GCM.
- * No ECDSA — signing uses HMAC-SHA-256 with a derived symmetric key.
+ * No ECDSA - signing uses HMAC-SHA-256 with a derived symmetric key.
  *
  * KEY HIERARCHY
- * ─────────────
- *   GLOBAL_SECRETS → K_master (32 bytes)
+ * -------------
+ *   GLOBAL_SECRETS -> K_master (32 bytes)
  *   K_group[g]   = HKDF(ikm=K_master, salt=group_id LE16, info="group_root")
  *   K_file_enc   = HKDF-Expand(K_group, "file_enc_v1")
  *   K_xfer       = HKDF-Expand(K_group, "xfer_root_v1")
@@ -29,9 +29,7 @@
 extern "C" {
 #endif
 
-/* =========================================================================
- * Constants
- * ========================================================================= */
+
 
 /** Size of any HKDF-derived symmetric key (AES-256). */
 #define SECURE_CRYPTO_DERIVED_KEY_SIZE       32u
@@ -55,9 +53,7 @@ extern "C" {
 /** HMAC-SHA-256 output length in bytes. */
 #define SECURE_CRYPTO_HMAC_SIZE              32u
 
-/* =========================================================================
- * Core data types
- * ========================================================================= */
+
 
 /**
  * @brief Root secret derived from GLOBAL_SECRETS.
@@ -79,9 +75,7 @@ typedef struct {
     uint8_t sign_key[SECURE_CRYPTO_DERIVED_KEY_SIZE];
 } secure_crypto_ecc_material_t;
 
-/* =========================================================================
- * Initialisation / key extraction
- * ========================================================================= */
+
 
 /**
  * @brief Extract K_master from the raw GLOBAL_SECRETS blob.
@@ -96,9 +90,7 @@ bool secure_crypto_root_secret_from_global_secrets(
     const uint8_t *global_secrets, size_t len,
     secure_crypto_root_secret_t *out);
 
-/* =========================================================================
- * Per-group key derivation
- * ========================================================================= */
+/* Per-group key derivation */
 
 bool secure_crypto_derive_file_enc_key(const secure_crypto_root_secret_t *root,
                                        uint16_t group_id,
@@ -119,9 +111,7 @@ bool secure_crypto_derive_recv_seed(const secure_crypto_root_secret_t *root,
                                     uint16_t group_id,
                                     uint8_t *out, size_t out_len);
 
-/* =========================================================================
- * Keypair derivation (HMAC-based, symmetric)
- * ========================================================================= */
+/* Keypair derivation (HMAC-based, symmetric) */
 
 bool secure_crypto_derive_writer_keypair(
     const secure_crypto_root_secret_t *root, uint16_t group_id,
@@ -131,9 +121,7 @@ bool secure_crypto_derive_recv_keypair(
     const secure_crypto_root_secret_t *root, uint16_t group_id,
     secure_crypto_ecc_material_t *material_out);
 
-/* =========================================================================
- * Hash / MAC primitives
- * ========================================================================= */
+
 
 bool secure_crypto_sha256(const uint8_t *message, size_t len,
                           uint8_t *digest_out, size_t digest_len);
@@ -142,9 +130,7 @@ bool secure_crypto_hmac_sha256(const uint8_t *key, size_t key_len,
                                const uint8_t *message, size_t msg_len,
                                uint8_t *mac_out, size_t mac_len);
 
-/* =========================================================================
- * AES-256-GCM
- * ========================================================================= */
+/* AES-256-GCM */
 
 bool secure_crypto_aes_gcm_encrypt(const uint8_t *key, size_t key_len,
                                    const uint8_t *nonce, size_t nonce_len,
@@ -164,13 +150,7 @@ bool secure_crypto_derive_chunk_key(const uint8_t *master_key, size_t master_len
                                     uint32_t chunk_idx, uint8_t *out,
                                     size_t out_len);
 
-/* =========================================================================
- * Sign / verify (HMAC-SHA-256 replacing ECDSA)
- *
- * Signatures are 32-byte HMAC outputs.  sig_len_ptr is set to 32 on success.
- * sig buffers are sized with SECURE_CRYPTO_ECC_SIGNATURE_MAX_SIZE (72 bytes)
- * for compatibility; only the first 32 bytes are populated/checked.
- * ========================================================================= */
+/* Sign and verify functions */
 
 bool secure_crypto_writer_sign(const secure_crypto_root_secret_t *root,
                                uint16_t group_id,

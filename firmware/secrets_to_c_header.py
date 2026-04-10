@@ -88,7 +88,7 @@ def secrets_to_c_header(
 
     src_path = os.path.join(os.path.dirname(path), 'src')
 
-    # Write the header with an extern declaration only — definition lives in secrets.c
+    # Write the header with an extern declaration only - definition lives in secrets.c
     # so that GLOBAL_SECRETS has exactly one definition across all translation units.
     with open(os.path.join(path, "secrets.h"), 'w') as f:
         f.write("#ifndef __SECRETS_H__\n")

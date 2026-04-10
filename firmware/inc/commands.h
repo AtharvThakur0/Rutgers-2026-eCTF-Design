@@ -137,7 +137,7 @@ typedef struct {
     pin_t old_pin;
     pin_t new_pin;
 } change_pin_command_t;
-/* boot_flag: no body — HSM ignores any payload */
+/* boot_flag: no body - HSM ignores any payload */
 
 /**********************************************************
  ******************** RESPONSE STRUCTS ********************

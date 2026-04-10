@@ -18,19 +18,15 @@
 #endif
 #include "wolfssl/wolfcrypt/aes.h"
 
-/* =========================================================================
- * GLOBAL_SECRETS binary layout
+/* GLOBAL_SECRETS binary layout
  *   [  0.. 64] ECC public key  (65 bytes)
  *   [ 65.. 96] ECC private key (32 bytes)
  *   [ 97..128] K_master        (32 bytes)
- *   [129..]    group list
- * ========================================================================= */
+ *   [129..]    group list */
 #define GS_AES_KEY_OFFSET 97u
 #define GS_MIN_LEN        129u
 
-/* =========================================================================
- * Frozen HKDF / HMAC label strings — never change
- * ========================================================================= */
+/* HKDF / HMAC labels */
 static const char LABEL_GROUP_ROOT[]  = "group_root";
 static const char LABEL_FILE_ENC[]    = "file_enc_v1";
 static const char LABEL_XFER_ROOT[]   = "xfer_root_v1";
@@ -47,9 +43,7 @@ static uint8_t g_expected_mac[SECURE_CRYPTO_HMAC_SIZE];
 static secure_crypto_ecc_material_t g_material;
 static Aes g_aes_ctx;
 
-/* =========================================================================
- * Internal helpers
- * ========================================================================= */
+
 
 static bool derive_key(const uint8_t master[SECURE_CRYPTO_DERIVED_KEY_SIZE],
                        const char *label,
@@ -209,9 +203,7 @@ static bool hmac_verify_digest(const secure_crypto_ecc_material_t *material,
     return diff == 0u;
 }
 
-/* =========================================================================
- * Initialisation / key extraction
- * ========================================================================= */
+
 
 bool secure_crypto_root_secret_from_global_secrets(
     const uint8_t *global_secrets, size_t len,
@@ -225,9 +217,7 @@ bool secure_crypto_root_secret_from_global_secrets(
     return true;
 }
 
-/* =========================================================================
- * Per-group symmetric key derivation
- * ========================================================================= */
+/* Per-group symmetric key derivation */
 
 bool secure_crypto_derive_file_enc_key(const secure_crypto_root_secret_t *root,
                                        uint16_t group_id,
@@ -281,9 +271,7 @@ bool secure_crypto_derive_recv_seed(const secure_crypto_root_secret_t *root,
     return derive_group_subkey(root, group_id, LABEL_RECV_SEED, out, out_len);
 }
 
-/* =========================================================================
- * Keypair derivation (HMAC-based, symmetric)
- * ========================================================================= */
+/* Keypair derivation (HMAC-based, symmetric) */
 
 bool secure_crypto_derive_writer_keypair(
     const secure_crypto_root_secret_t *root, uint16_t group_id,
@@ -311,9 +299,7 @@ bool secure_crypto_derive_recv_keypair(
                                           sizeof(material_out->sign_key));
 }
 
-/* =========================================================================
- * Hash / MAC primitives
- * ========================================================================= */
+
 
 bool secure_crypto_sha256(const uint8_t *message, size_t len,
                           uint8_t *digest_out, size_t digest_len) {
@@ -394,9 +380,7 @@ bool secure_crypto_aes_gcm_decrypt(const uint8_t *key, size_t key_len,
                            plaintext_out);
 }
 
-/* =========================================================================
- * Public sign / verify API — writer keypair
- * ========================================================================= */
+/* Public sign / verify API - writer keypair */
 
 bool secure_crypto_writer_sign(const secure_crypto_root_secret_t *root,
                                uint16_t group_id,
@@ -440,9 +424,7 @@ bool secure_crypto_writer_verify(const secure_crypto_root_secret_t *root,
     return ok;
 }
 
-/* =========================================================================
- * Public sign / verify API — receive-proof keypair
- * ========================================================================= */
+/* Receive-proof keypair */
 
 bool secure_crypto_receive_proof_sign(const secure_crypto_root_secret_t *root,
                                       uint16_t group_id,

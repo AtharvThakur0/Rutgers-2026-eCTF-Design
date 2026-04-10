@@ -17,16 +17,12 @@
 extern "C" {
 #endif
 
-/* =========================================================================
- * Constants
- * ========================================================================= */
+
 
 #define SHA256_RAW_DIGEST_SIZE  32u   /**< SHA-256 output length in bytes. */
 #define HMAC_SHA256_RAW_SIZE    32u   /**< HMAC-SHA-256 output length in bytes. */
 
-/* =========================================================================
- * Context types
- * ========================================================================= */
+
 
 /**
  * @brief SHA-256 streaming context.  All fields are internal.
@@ -36,7 +32,7 @@ extern "C" {
 typedef struct {
     uint32_t state[8];   /**< Running hash state (H0..H7). */
     uint64_t length;     /**< Total bits processed in complete 512-bit blocks. */
-    uint32_t curlen;     /**< Bytes buffered in @p buf (0–63). */
+    uint32_t curlen;     /**< Bytes buffered in @p buf (0-63). */
     uint8_t  buf[64];    /**< Partial block buffer. */
 } sha256_raw_ctx_t;
 
@@ -51,9 +47,7 @@ typedef struct {
     sha256_raw_ctx_t outer; /**< Outer hash: H(opad || inner_hash). */
 } hmac_sha256_raw_ctx_t;
 
-/* =========================================================================
- * SHA-256 streaming API
- * ========================================================================= */
+
 
 /** @brief Initialise a SHA-256 context. */
 void sha256_raw_ctx_init(sha256_raw_ctx_t *ctx);
@@ -68,9 +62,7 @@ void sha256_raw_ctx_update(sha256_raw_ctx_t *ctx, const uint8_t *data, size_t le
  */
 void sha256_raw_ctx_final(sha256_raw_ctx_t *ctx, uint8_t digest[SHA256_RAW_DIGEST_SIZE]);
 
-/* =========================================================================
- * HMAC-SHA-256 streaming API
- * ========================================================================= */
+
 
 /**
  * @brief Initialise an HMAC-SHA-256 context with the given key.
@@ -93,9 +85,7 @@ void hmac_sha256_raw_update(hmac_sha256_raw_ctx_t *ctx,
 void hmac_sha256_raw_final(hmac_sha256_raw_ctx_t *ctx,
                             uint8_t mac[HMAC_SHA256_RAW_SIZE]);
 
-/* =========================================================================
- * One-shot helpers
- * ========================================================================= */
+
 
 /**
  * @brief One-shot SHA-256 hash.
@@ -120,9 +110,7 @@ void hmac_sha256_raw(const uint8_t *key, size_t key_len,
                      const uint8_t *msg, size_t msg_len,
                      uint8_t mac[HMAC_SHA256_RAW_SIZE]);
 
-/* =========================================================================
- * HKDF (RFC 5869)
- * ========================================================================= */
+/* HKDF (RFC 5869) */
 
 /**
  * @brief HKDF-Extract: PRK = HMAC-SHA-256(salt, IKM).
@@ -141,7 +129,7 @@ void hkdf_extract_sha256(const uint8_t *salt, size_t salt_len,
 /**
  * @brief HKDF-Expand: derive @p out_len bytes of key material.
  *
- * @p out_len must be ≤ 255 * SHA256_RAW_DIGEST_SIZE (8160 bytes).
+ * @p out_len must be <= 255 * SHA256_RAW_DIGEST_SIZE (8160 bytes).
  *
  * @param prk       Pseudorandom key from HKDF-Extract.
  * @param prk_len   Length of @p prk in bytes (typically 32).

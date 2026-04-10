@@ -76,13 +76,13 @@ static int await_ack(int uart_id)
 
 /* The ectf_tools host protocol (hsm_interface.py):
  *
- *  SENDING (host → HSM, send_msg):
+ *  SENDING (host -> HSM, send_msg):
  *    - Yields header as chunk 0, then body in 256-byte chunks.
  *    - Calls get_ack() after EVERY chunk (including the header).
  *    - Therefore read_packet() must write_ack() after the header AND after
  *      each 256-byte body block.
  *
- *  RECEIVING (host ← HSM, get_raw_msg):
+ *  RECEIVING (host <- HSM, get_raw_msg):
  *    - For opcodes other than ACK and DEBUG ("NACK_MSGS"):
  *      sends send_ack() after the header AND after each 256-byte body block.
  *    - For ACK and DEBUG opcodes: never sends ACKs.
@@ -178,7 +178,7 @@ int read_packet(int uart_id, msg_type_t *cmd, void *buf, uint16_t *len)
     if (lo < 0 || hi < 0) return MSG_TIMEOUT;
     uint16_t pkt_len = (uint16_t)lo | ((uint16_t)hi << 8);
 
-    /* ACK the header chunk — the host is blocked in get_ack() waiting for
+    /* ACK the header chunk - the host is blocked in get_ack() waiting for
      * this before it will send the first body chunk. */
     write_ack(uart_id);
 

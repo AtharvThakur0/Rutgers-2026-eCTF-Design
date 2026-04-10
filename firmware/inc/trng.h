@@ -9,13 +9,13 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "ti_msp_dl_config.h"   /* pulls in msp.h + driverlib.h → dl_trng.h */
+#include "ti_msp_dl_config.h"   /* pulls in msp.h + driverlib.h -> dl_trng.h */
 
 /**
  * @brief Initialize the hardware TRNG.
  *
  * Must be called once before any call to trng_read_bytes().
- * Sequence: reset → enablePower → 32-cycle delay → setDecimationRate → enable.
+ * Sequence: reset -> enablePower -> 32-cycle delay -> setDecimationRate -> enable.
  * DL_TRNG_enablePower() MUST follow DL_TRNG_reset(); reversing the order
  * leaves the peripheral bus disconnected and all reads return 0.
  */

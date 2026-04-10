@@ -6,16 +6,16 @@
  *
  *   Offset   Size  Field
  *   ------   ----  -----
- *      0      32   pin_hash  — HMAC-SHA256(K_pin, PIN_bytes)
- *     32       4   fail_count — consecutive failures (LE32)
- *     36       4   _reserved — completes the 8-byte ECC word at offset 32
+ *      0      32   pin_hash  - HMAC-SHA256(K_pin, PIN_bytes)
+ *     32       4   fail_count - consecutive failures (LE32)
+ *     36       4   _reserved - completes the 8-byte ECC word at offset 32
  *     40    984   (unused, erased = 0xFF)
  *
- * fail_count lives at offset 32, which is ECC word 4 (bytes 32–39).
- * pin_hash occupies ECC words 0–3 (bytes 0–31).  The two fields are
+ * fail_count lives at offset 32, which is ECC word 4 (bytes 32-39).
+ * pin_hash occupies ECC words 0-3 (bytes 0-31).  The two fields are
  * never in the same 8-byte ECC word, satisfying the ECC-write constraint.
  *
- * Lockout: none — fail_count is tracked but never triggers a lockout.
+ * Lockout: none - fail_count is tracked but never triggers a lockout.
  */
 
 #include "security.h"
@@ -30,11 +30,9 @@
 #include <stdint.h>
 #include <string.h>
 
-/* =========================================================================
- * Constants
- * ========================================================================= */
 
-/* Flash address of the PIN-state page (within the APP2 region 0x3A400–0x3FFFF).
+
+/* Flash address of the PIN-state page (within the APP2 region 0x3A400-0x3FFFF).
  */
 #define PIN_STATE_FLASH_ADDR 0x3A800u
 
@@ -48,25 +46,21 @@
 /* Minimum PIN length; maximum is PIN_MAX_LEN from security.h. */
 #define PIN_MIN_LEN PIN_LENGTH /* 6 */
 
-/* =========================================================================
- * RAM state
- * ========================================================================= */
+/* RAM state */
 
 static uint8_t g_pin_hash[32];
 static uint32_t g_fail_count;
 static bool g_initialized = false;
 
-/* =========================================================================
- * Helpers
- * ========================================================================= */
+
 
 /*
  * Mandatory delay after every failed PIN attempt.
  *
- * Calibrated to ≈ 5 s on MSPM0 running at 32 MHz.  Each loop iteration
+ * Calibrated to ~= 5 s on MSPM0 running at 32 MHz.  Each loop iteration
  * touches a volatile variable which forces a load + store + branch.
- * Empirically measured at ~21 cycles/iter on this build → 7 700 000 × 21
- * / 32 000 000 ≈ 5.05 s.
+ * Empirically measured at ~21 cycles/iter on this build -> 7 700 000 * 21
+ * / 32 000 000 ~= 5.05 s.
  */
 static void fail_delay(void) {
   for (volatile uint32_t i = 0u; i < 12500000UL; i++) {
@@ -80,7 +74,7 @@ static void fail_delay(void) {
 
 /*
  * Derive K_pin from the root secret, then compute
- *   HMAC-SHA256(K_pin, pin_bytes) → out_hash[32]
+ *   HMAC-SHA256(K_pin, pin_bytes) -> out_hash[32]
  */
 static bool compute_pin_hash(const uint8_t *pin, size_t pin_len,
                              uint8_t out_hash[32]) {
@@ -138,7 +132,7 @@ static void load_pin_state(void) {
                  ((uint32_t)page[FAIL_COUNT_OFFSET + 2u] << 16) |
                  ((uint32_t)page[FAIL_COUNT_OFFSET + 3u] << 24);
 
-  /* Erased flash reads as 0xFFFFFFFF — treat as zero failures. */
+  /* Erased flash reads as 0xFFFFFFFF - treat as zero failures. */
   if (g_fail_count == 0xFFFFFFFFu) {
     g_fail_count = 0u;
   }
@@ -154,9 +148,7 @@ static bool pin_hash_is_blank(void) {
   return true;
 }
 
-/* =========================================================================
- * Public API
- * ========================================================================= */
+
 
 int pin_init(void) {
   load_pin_state();
@@ -213,7 +205,7 @@ bool check_pin(unsigned char *pin) {
   memset(candidate_hash, 0, sizeof(candidate_hash));
 
   if (diff == 0u) {
-    /* Correct PIN — clear failure counter. */
+    /* Correct PIN - clear failure counter. */
     if (g_fail_count != 0u) {
       g_fail_count = 0u;
       write_pin_state();
@@ -221,7 +213,7 @@ bool check_pin(unsigned char *pin) {
     return true;
   }
 
-  /* Wrong PIN — record failure, enforce delay, then return. */
+  /* Wrong PIN - record failure, enforce delay, then return. */
   g_fail_count++;
   write_pin_state();
   fail_delay();
@@ -258,7 +250,7 @@ int pin_change(const uint8_t *old_pin, size_t old_len, const uint8_t *new_pin,
     return -1;
   }
 
-  /* Old PIN verified — derive and store the new hash. */
+  /* Old PIN verified - derive and store the new hash. */
   if (!compute_pin_hash(new_pin, new_len, g_pin_hash)) {
     return -1;
   }

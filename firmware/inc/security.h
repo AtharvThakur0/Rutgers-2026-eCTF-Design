@@ -43,7 +43,7 @@ typedef struct {
  */
 int pin_init(void);
 
-/** @brief Return true if the HSM is permanently locked (≥5 failed attempts). */
+/** @brief Return true if the HSM is permanently locked (>=5 failed attempts). */
 bool pin_is_locked(void);
 
 /** @brief Validate a pin against the HSM's pin.
@@ -63,9 +63,9 @@ bool check_pin(unsigned char *pin);
  *        Resets the counter and writes the new hash on success.
  *
  * @param old_pin  Current PIN bytes.
- * @param old_len  Length of old_pin (PIN_LENGTH ≤ len ≤ PIN_MAX_LEN).
+ * @param old_len  Length of old_pin (PIN_LENGTH <= len <= PIN_MAX_LEN).
  * @param new_pin  New PIN bytes.
- * @param new_len  Length of new_pin (PIN_LENGTH ≤ len ≤ PIN_MAX_LEN).
+ * @param new_len  Length of new_pin (PIN_LENGTH <= len <= PIN_MAX_LEN).
  * @return 0 on success, -1 on failure.
  */
 int pin_change(const uint8_t *old_pin, size_t old_len,
@@ -78,7 +78,7 @@ int pin_change(const uint8_t *old_pin, size_t old_len,
  * current PIN without exposing the internal g_pin_hash buffer.
  *
  * @param pin     PIN bytes.
- * @param pin_len Length of pin (PIN_LENGTH ≤ len ≤ PIN_MAX_LEN).
+ * @param pin_len Length of pin (PIN_LENGTH <= len <= PIN_MAX_LEN).
  * @param out_hash Output buffer, must be 32 bytes.
  * @return true on success.
  */

@@ -4,8 +4,8 @@
  *
  * Enabled features:
  *   - AES-256-GCM  (HAVE_AESGCM)
- *   - HKDF         (HAVE_HKDF) — available but secure_crypto.c uses sha256_raw
- *   - HMAC/SHA-256 (HAVE_HMAC, WOLFSSL_SHA256) — compiled, not used for crypto
+ *   - HKDF         (HAVE_HKDF) - available but secure_crypto.c uses sha256_raw
+ *   - HMAC/SHA-256 (HAVE_HMAC, WOLFSSL_SHA256) - compiled, not used for crypto
  *
  * Explicitly disabled to reduce code size on M0+:
  *   - RSA, DSA, DH, ECC (no asymmetric)

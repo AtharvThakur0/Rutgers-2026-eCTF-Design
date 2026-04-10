@@ -13,14 +13,14 @@
  *   DL_TRNG_getCapture, DL_TRNG_clearInterruptStatus.
  *
  * Functions that DO NOT exist (removed):
- *   DL_TRNG_enable()   — use DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_NORM_FUNC)
- *   DL_TRNG_getData()  — use DL_TRNG_getCapture(TRNG)
+ *   DL_TRNG_enable()   - use DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_NORM_FUNC)
+ *   DL_TRNG_getData()  - use DL_TRNG_getCapture(TRNG)
  */
 
 #include "trng.h"
 #include <stdbool.h>
 
-/* Generous poll limit — at 32 MHz and CLKDIV_2, one 32-bit capture takes
+/* Generous poll limit - at 32 MHz and CLKDIV_2, one 32-bit capture takes
  * roughly 2 048 ring-oscillator cycles.  1 000 000 iterations is > 10 ms
  * of margin; if we time out something is badly wrong with the peripheral. */
 #define TRNG_POLL_LIMIT  1000000u
@@ -44,7 +44,7 @@ void trng_init(void)
     delay_cycles(32);
 
     /* Step 3: Re-enable power AFTER reset.
-     * DL_TRNG_reset() disconnects the peripheral bus — register writes are
+     * DL_TRNG_reset() disconnects the peripheral bus - register writes are
      * silently dropped until enablePower is called a second time. */
     DL_TRNG_enablePower(TRNG);
 
@@ -54,8 +54,8 @@ void trng_init(void)
     }
 
     /* Step 4: Clock and decimation setup.
-     * Clock divider /2 → 16 MHz TRNG clock from a 32 MHz MCLK.
-     * Decimation rate 4 → one output bit per 4 ring-oscillator samples;
+     * Clock divider /2 -> 16 MHz TRNG clock from a 32 MHz MCLK.
+     * Decimation rate 4 -> one output bit per 4 ring-oscillator samples;
      * slower than RATE_2 but provides more mixing of raw entropy. */
     DL_TRNG_setClockDivider(TRNG, DL_TRNG_CLOCK_DIVIDE_2);
     DL_TRNG_setDecimationRate(TRNG, DL_TRNG_DECIMATION_RATE_4);
@@ -78,7 +78,7 @@ void trng_read_bytes(uint8_t *buf, size_t len)
             DL_TRNG_INTERRUPT_CMD_FAIL_EVENT    |
             DL_TRNG_INTERRUPT_CAPTURE_RDY_EVENT);
 
-        /* Issue the NORM_FUNC command — this is the correct way to start
+        /* Issue the NORM_FUNC command - this is the correct way to start
          * a single 32-bit capture.  There is no DL_TRNG_enable() in the SDK;
          * DL_TRNG_sendCommand is the only way to drive the TRNG state machine. */
         DL_TRNG_sendCommand(TRNG, DL_TRNG_CMD_NORM_FUNC);
@@ -87,7 +87,7 @@ void trng_read_bytes(uint8_t *buf, size_t len)
         uint32_t timeout = TRNG_POLL_LIMIT;
         while (!DL_TRNG_isCaptureReady(TRNG)) {
             if (DL_TRNG_isCommandFail(TRNG)) {
-                /* Health-test or analogue failure — clear and retry. */
+                /* Health-test or analogue failure - clear and retry. */
                 DL_TRNG_clearInterruptStatus(TRNG,
                     DL_TRNG_INTERRUPT_CMD_DONE_EVENT    |
                     DL_TRNG_INTERRUPT_CMD_FAIL_EVENT    |
@@ -108,7 +108,7 @@ void trng_read_bytes(uint8_t *buf, size_t len)
                 DL_TRNG_INTERRUPT_CMD_DONE_EVENT    |
                 DL_TRNG_INTERRUPT_CAPTURE_RDY_EVENT);
 
-            /* Copy 1–4 bytes depending on how many still need to be written. */
+            /* Copy 1-4 bytes depending on how many still need to be written. */
             size_t take = len - written;
             if (take > sizeof(uint32_t)) {
                 take = sizeof(uint32_t);

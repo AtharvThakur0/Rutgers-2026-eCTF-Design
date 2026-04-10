@@ -251,7 +251,7 @@ int main(void) {
             digest(pkt_len, uart_buf);
             break;
 
-        // Test-only echo command (opcode 0xEE) — remove before production
+        // Test-only echo command (opcode 0xEE) - remove before production
         case ECHO_MSG:
             STATUS_LED_OFF();
             echo(pkt_len, uart_buf);

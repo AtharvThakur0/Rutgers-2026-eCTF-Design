@@ -1,7 +1,7 @@
 /**
  * @file commands.c
  * @author Samuel Meyers
- * @brief eCTF command handlers — crypto + blob-store + PIN wired together
+ * @brief eCTF command handlers - crypto + blob-store + PIN wired together
  * @date 2026
  *
  * This source file is part of an example system for MITRE's 2026 Embedded CTF
@@ -28,19 +28,13 @@
 #include <limits.h>
 #include <string.h>
 
-/* =========================================================================
- * Name / group metadata table
- *
- * One 1024-byte flash page at 0x3A400 holds one 64-byte entry per blob
- * slot. Stores the file name and owning group_id unencrypted so that
- * LIST_FILES can enumerate files without decrypting blobs.
- * ========================================================================= */
+/* Name and group metadata table (0x3A400) */
 
 #define BLOB_NAME_TABLE_ADDR 0x3A400u
 
 /* 64 bytes per entry: 32 (name) + 2 (group_id) + 1 (in_use) + 29 (pad).
  * 64 is a multiple of 8, satisfying the MSPM0 ECC-word constraint.
- * 16 × 64 = 1024 bytes fits exactly in one flash page.              */
+ * 16 * 64 = 1024 bytes fits exactly in one flash page.              */
 #define NAME_ENTRY_SIZE 64u
 #define NAME_IN_USE_TAG 0x01u
 
@@ -67,9 +61,7 @@ static blob_name_entry_t g_name_table[SECURE_BLOB_STORE_MAX_SLOTS];
 /* Scratch page for erase-rewrite of the name table. */
 static uint8_t g_name_page[FLASH_PAGE_SIZE];
 
-/* =========================================================================
- * Name table helpers
- * ========================================================================= */
+
 
 static void load_name_table(void) {
   flash_simple_read(BLOB_NAME_TABLE_ADDR, g_name_table, sizeof(g_name_table));
@@ -123,9 +115,7 @@ static bool slot_occupied(uint8_t slot) {
   return g_fat[slot].flash_addr != UINT32_MAX;
 }
 
-/* =========================================================================
- * Public initialisation
- * ========================================================================= */
+
 
 int init_commands(void) {
   /* Load the blob-store FAT into g_fat (secure_blob_store.c). */
@@ -137,12 +127,7 @@ int init_commands(void) {
   return 0;
 }
 
-/* =========================================================================
- * pin_gate — centralised PIN check used by every command handler.
- *
- * Returns  0 if the PIN is valid and the HSM is not locked.
- * Returns -1 and sends an appropriate ERROR packet otherwise.
- * ========================================================================= */
+/* Validate PIN; returns 0 on success, -1 on failure. */
 static int pin_gate(unsigned char *pin) {
   if (pin_is_locked()) {
     print_error("HSM locked\n");
@@ -159,9 +144,7 @@ static int pin_gate(unsigned char *pin) {
   return 0;
 }
 
-/* =========================================================================
- * Shared static buffers (avoid large stack allocations on Cortex-M0+)
- * ========================================================================= */
+/* Shared static buffers (avoid large stack allocations on Cortex-M0+) */
 
 /* Scratch buffer for smaller messages. */
 static uint8_t g_scratch_buf[512];
@@ -224,10 +207,7 @@ static int store_received_blob(uint8_t slot, const uint8_t uuid[UUID_SIZE],
   return 0;
 }
 
-/* =========================================================================
- * Helper: enumerate files into a list_response_t from the blob FAT +
- *         name table (used by both list() and listen/interrogate path).
- * ========================================================================= */
+/* Populate file list from FAT and name table */
 void generate_list_files(list_response_t *file_list) {
   file_list->n_files = 0;
   for (uint8_t i = 0;
@@ -248,18 +228,13 @@ void generate_list_files(list_response_t *file_list) {
 #define WRITE_CMD_MIN_LEN \
   ((uint16_t)(sizeof(write_command_t) - MAX_CONTENTS_SIZE))
 
-/* =========================================================================
- * STORE_FILE  (opcode 'W')
- *
- * Flow: PIN check → permission check → compute owner_pin_hash →
- *       save name entry → blob_write (AES-256-GCM) → ACK
- * ========================================================================= */
+/* Write file (opcode 'W') */
 int write(uint16_t pkt_len, uint8_t *buf) {
   write_command_t *cmd = (write_command_t *)buf;
   uint8_t pin_hash[SECURE_BLOB_STORE_PIN_HASH_SIZE];
   secure_blob_store_status_t rc;
 
-  /* Reject truncated packets — must have at least the fixed header fields. */
+  /* Reject truncated packets - must have at least the fixed header fields. */
   if (pkt_len < WRITE_CMD_MIN_LEN) {
     print_error("Packet too short\n");
     return -1;
@@ -341,14 +316,7 @@ int write(uint16_t pkt_len, uint8_t *buf) {
   return 0;
 }
 
-/* =========================================================================
- * RETRIEVE_FILE  (opcode 'R')
- *
- * Flow: PIN check → group permission check → compute pin_hash →
- *       blob_read (AES-256-GCM decrypt) → stream body with per-chunk ACK
- *
- * Per-chunk ACK is handled transparently by write_packet() / write_bytes().
- * ========================================================================= */
+/* Read file (opcode 'R') */
 int read(uint16_t pkt_len, uint8_t *buf) {
   read_command_t *cmd = (read_command_t *)buf;
   uint8_t pin_hash[SECURE_BLOB_STORE_PIN_HASH_SIZE];
@@ -402,12 +370,7 @@ int read(uint16_t pkt_len, uint8_t *buf) {
                       g_large_buf.read_buf, (uint16_t)(MAX_NAME_SIZE + out_len));
 }
 
-/* =========================================================================
- * LIST_FILES  (opcode 'L')
- *
- * Returns FAT metadata (slot, group_id, name) for every occupied slot.
- * PIN is still verified (required by the existing ectf host tools).
- * ========================================================================= */
+/* List files (opcode 'L') */
 int list(uint16_t pkt_len, uint8_t *buf) {
   list_command_t *cmd = (list_command_t *)buf;
   list_response_t *resp = (list_response_t *)g_scratch_buf;
@@ -428,12 +391,7 @@ int list(uint16_t pkt_len, uint8_t *buf) {
   return 0;
 }
 
-/* =========================================================================
- * DELETE_FILE  (opcode 'X')
- *
- * Flow: PIN check (owner only) → blob_delete (erase flash + update FAT)
- *       → clear name entry → ACK
- * ========================================================================= */
+/* Delete file (opcode 'X') */
 int delete_file(uint16_t pkt_len, uint8_t *buf) {
   delete_file_command_t *cmd = (delete_file_command_t *)buf;
   secure_blob_store_status_t rc;
@@ -467,12 +425,7 @@ int delete_file(uint16_t pkt_len, uint8_t *buf) {
   return 0;
 }
 
-/* =========================================================================
- * CHANGE_PIN  (opcode 'P')
- *
- * Flow: old PIN check (inside pin_change) → derive new hash →
- *       write flash → ACK
- * ========================================================================= */
+/* Change PIN (opcode 'P') */
 int change_pin(uint16_t pkt_len, uint8_t *buf) {
   change_pin_command_t *cmd = (change_pin_command_t *)buf;
 
@@ -499,14 +452,7 @@ int change_pin(uint16_t pkt_len, uint8_t *buf) {
   return 0;
 }
 
-/* =========================================================================
- * BOOT_FLAG  (opcode 'G')
- *
- * Returns 32 bytes of HMAC-SHA-256(K_master, "ectf_boot_flag_v1").
- * This value is unique per deployment (K_master is random) and proves
- * the HSM was correctly provisioned with the expected global secrets.
- * No PIN required.
- * ========================================================================= */
+/* Boot flag (opcode 'G') */
 int boot_flag(uint16_t pkt_len, uint8_t *buf) {
   static const uint8_t label[] = "ectf_boot_flag_v1";
   static uint8_t s_flag[SECURE_CRYPTO_HMAC_SIZE];
@@ -534,16 +480,7 @@ int boot_flag(uint16_t pkt_len, uint8_t *buf) {
   return 0;
 }
 
-/* =========================================================================
- * DIGEST  (opcode 'H')
- *
- * Request body: 1 byte slot number (defaults to 0 if body is empty).
- * Response: device_id[16] || file_id[16] = 32 bytes.
- *   device_id = HMAC-SHA-256(K_master, "ectf_boot_flag_v1")[:16]
- *   file_id   = SHA-256(slot plaintext)[:16]
- *
- * No PIN required.  Uses group-mask auth via blob_read_all_group_mask().
- * ========================================================================= */
+/* Digest (opcode 'H') */
 int digest(uint16_t pkt_len, uint8_t *buf) {
   static const uint8_t boot_label[] = "ectf_boot_flag_v1";
   secure_crypto_root_secret_t root;
@@ -602,21 +539,13 @@ int digest(uint16_t pkt_len, uint8_t *buf) {
   return write_packet(CONTROL_INTERFACE, DIGEST_MSG, response, sizeof(response));
 }
 
-/* =========================================================================
- * ECHO  (opcode 0xEE)  — test only, remove before production
- * ========================================================================= */
+/* Echo (opcode 0xEE) */
 int echo(uint16_t pkt_len, uint8_t *buf) {
   write_packet(CONTROL_INTERFACE, ECHO_MSG, buf, pkt_len);
   return 0;
 }
 
-/* =========================================================================
- * RECEIVE  (opcode 'C')
- * =========================================================================
- *
- * Inter-HSM file transfer. Source-side listen() reads plaintext from the
- * encrypted blob store, and the destination re-encrypts into its own blob slot.
- * ========================================================================= */
+/* Receive (opcode 'C') */
 int receive(uint16_t pkt_len, uint8_t *buf) {
   receive_command_t *command = (receive_command_t *)buf;
   receive_request_t request;
@@ -735,9 +664,7 @@ int receive(uint16_t pkt_len, uint8_t *buf) {
   return 0;
 }
 
-/* =========================================================================
- * INTERROGATE  (opcode 'I')
- * ========================================================================= */
+/* Interrogate (opcode 'I') */
 int interrogate(uint16_t pkt_len, uint8_t *buf) {
   interrogate_command_t *command = (interrogate_command_t *)buf;
   interrogate_request_t request;
@@ -848,9 +775,7 @@ int interrogate(uint16_t pkt_len, uint8_t *buf) {
   return write_packet(CONTROL_INTERFACE, INTERROGATE_MSG, p_list, len_recv_msg);
 }
 
-/* =========================================================================
- * LISTEN  (opcode 'N')
- * ========================================================================= */
+/* Listen (opcode 'N') */
 int listen(uint16_t pkt_len, uint8_t *buf) {
   uint8_t uart_buf[sizeof(interrogate_proof_t)];
   msg_type_t cmd;
